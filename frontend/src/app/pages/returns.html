@@ -1,0 +1,630 @@
+<div class="returns-container">
+  @if (pending() && !busy()) { <p class="alert" role="status">El resultado de la operación no está confirmado. <button mat-stroked-button (click)="retry()">Reintentar la misma operación</button></p> }
+  <!-- Header -->
+  <header class="page-header">
+    <div class="header-titles">
+      <div class="header-icon-badge">
+        <app-icon name="assignment_return"></app-icon>
+      </div>
+      <div>
+        <h1 class="page-title">{{ mode() === 'new' ? 'Registrar devolución' : 'Devoluciones' }}</h1>
+        <p class="page-desc">
+          {{ mode() === 'new'
+            ? 'Selecciona una venta dentro del plazo configurado y los productos que se retornarán.'
+            : 'Consulta solicitudes de devolución, revisa productos retornados y autoriza reintegros.'
+          }}
+        </p>
+      </div>
+    </div>
+    <div class="header-actions">
+      @if (mode() === 'list') {
+        <button mat-flat-button color="primary" (click)="setMode('new')">
+          <app-icon name="add"></app-icon> Nueva devolución
+        </button>
+      } @else {
+        <button mat-stroked-button (click)="setMode('list')">
+          <app-icon name="arrow_back"></app-icon> Volver al listado
+        </button>
+      }
+    </div>
+  </header>
+
+  <!-- Alerts -->
+  @if (error()) {
+    <div class="alert alert-error" role="alert">
+      <app-icon name="error"></app-icon>
+      <span>{{ error() }}</span>
+      <button class="alert-close" (click)="error.set('')" aria-label="Cerrar">&times;</button>
+    </div>
+  }
+  @if (success()) {
+    <div class="alert alert-success" role="status">
+      <app-icon name="check_circle"></app-icon>
+      <span>{{ success() }}</span>
+      <button class="alert-close" (click)="success.set('')" aria-label="Cerrar">&times;</button>
+    </div>
+  }
+
+  <!-- LIST MODE (P26) -->
+  @if (mode() === 'list') {
+    <!-- Summary Cards -->
+    <div class="summary-cards">
+      <div class="stat-card" [class.alert-stat]="summary().pendientes > 0">
+        <div class="stat-icon"><app-icon name="pending_actions"></app-icon></div>
+        <div class="stat-data">
+          <span class="stat-label">Pendientes de autorización</span>
+          <span class="stat-val">{{ summary().pendientes }}</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon"><app-icon name="task_alt"></app-icon></div>
+        <div class="stat-data">
+          <span class="stat-label">Aprobadas hoy</span>
+          <span class="stat-val">{{ summary().aprobadasHoy }}</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon"><app-icon name="payments"></app-icon></div>
+        <div class="stat-data">
+          <span class="stat-label">Reintegrado hoy</span>
+          <span class="stat-val">S/ {{ summary().montoReintegradoHoy }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs Nav -->
+    <nav class="tabs-nav" aria-label="Filtro por estado de devolución">
+      <button class="tab-btn" [class.active]="activeTab() === 'TODAS'" (click)="setTab('TODAS')">
+        Todas
+      </button>
+      <button class="tab-btn" [class.active]="activeTab() === 'PENDIENTE'" (click)="setTab('PENDIENTE')">
+        Pendientes
+        @if (summary().pendientes > 0) {
+          <span class="tab-badge warning">{{ summary().pendientes }}</span>
+        }
+      </button>
+      <button class="tab-btn" [class.active]="activeTab() === 'APROBADA'" (click)="setTab('APROBADA')">
+        Aprobadas
+      </button>
+      <button class="tab-btn" [class.active]="activeTab() === 'RECHAZADA'" (click)="setTab('RECHAZADA')">
+        Rechazadas
+      </button>
+    </nav>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-label>Buscar por código, comprobante o cliente</mat-label>
+        <input matInput [formControl]="searchControl" placeholder="DV-..., B001-..., DNI o nombre" (keyup.enter)="applyFilters()">
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="date-field">
+        <mat-label>Desde</mat-label>
+        <input matInput type="date" [formControl]="desdeControl">
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="date-field">
+        <mat-label>Hasta</mat-label>
+        <input matInput type="date" [formControl]="hastaControl">
+      </mat-form-field>
+      <div class="filter-actions">
+        <button mat-stroked-button (click)="applyFilters()">Filtrar</button>
+        <button mat-button (click)="clearFilters()">Limpiar</button>
+      </div>
+    </div>
+
+    <!-- Table Card -->
+    <div class="table-card">
+      @if (loading()) {
+        <div style="padding: 2rem; text-align: center; color: var(--muted);">Cargando devoluciones...</div>
+      } @else if (rows().length === 0) {
+        <app-empty-state
+          icon="assignment_return"
+          title="No se encontraron devoluciones"
+          description="No hay registros que coincidan con los filtros seleccionados.">
+        </app-empty-state>
+      } @else {
+        <table class="custom-table">
+          <thead>
+            <tr>
+              <th>N.°</th>
+              <th>Fecha</th>
+              <th>Venta / Comprobante</th>
+              <th>Cliente</th>
+              <th>Reintegro</th>
+              <th>Forma</th>
+              <th>Estado</th>
+              <th>Solicitante</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of rows(); track row.id) {
+              <tr>
+                <td><strong>{{ row.codigo }}</strong></td>
+                <td>{{ row.fechaSolicitud }}</td>
+                <td>
+                  <strong>{{ row.comprobante }}</strong>
+                  <div style="font-size: 1rem; color: var(--muted);">{{ row.tipoComprobante }}</div>
+                </td>
+                <td>
+                  <div>{{ row.clienteNombre }}</div>
+                  @if (row.clienteDocumento) {
+                    <div style="font-size: 1rem; color: var(--muted);">{{ row.clienteDocumento }}</div>
+                  }
+                </td>
+                <td class="amount-text">S/ {{ row.montoReintegro }}</td>
+                <td>{{ formatForma(row.formaReintegro) }}</td>
+                <td>
+                  <span class="status-pill {{ row.estadoDevolucion.toLowerCase() }}">
+                    {{ row.estadoDevolucion === 'PENDIENTE' ? 'Pendiente' : row.estadoDevolucion === 'APROBADA' ? 'Aprobada' : 'Rechazada' }}
+                  </span>
+                </td>
+                <td>{{ row.solicitanteNombre }}</td>
+                <td>
+                  <div class="table-actions">
+                    <button mat-stroked-button (click)="openDetail(row.id)">Ver detalle</button>
+                    @if (row.estadoDevolucion === 'PENDIENTE' && isAdmin()) {
+                      <button mat-flat-button color="primary" (click)="openApprove(row)">Autorizar</button>
+                      <button mat-stroked-button color="warn" (click)="openReject(row)">Rechazar</button>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+  }
+
+  <!-- NEW RETURN MODE (P27) -->
+  @if (mode() === 'new') {
+    <div class="form-step">
+      <!-- Step 1: Search Sale -->
+      @if (!selectedSale()) {
+        <div class="step-header">
+          <h2 class="step-title">Paso 1: Buscar venta emitida (plazo configurado)</h2>
+        </div>
+        <div class="filter-bar">
+          <mat-form-field appearance="outline" class="search-field">
+            <mat-label>Comprobante, código o documento de cliente</mat-label>
+            <input matInput [formControl]="saleSearchControl" placeholder="B001-..., F001-..., DNI o RUC" (keyup.enter)="searchSales()">
+          </mat-form-field>
+          <button mat-flat-button color="primary" [disabled]="searchingSales()" (click)="searchSales()">
+            <app-icon name="search"></app-icon> Buscar venta
+          </button>
+        </div>
+
+        @if (searchingSales()) {
+          <div style="padding: 2rem; text-align: center; color: var(--muted);">Buscando ventas elegibles...</div>
+        } @else if (foundSales().length > 0) {
+          <div class="table-card">
+            <table class="custom-table">
+              <thead>
+                <tr>
+                  <th>Comprobante</th>
+                  <th>Fecha de venta</th>
+                  <th>Días</th>
+                  <th>Cliente</th>
+                  <th>Total</th>
+                  <th>Medios de pago</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (s of foundSales(); track s.idVenta) {
+                  <tr>
+                    <td><strong>{{ s.comprobante }}</strong></td>
+                    <td>{{ s.fechaVenta }}</td>
+                    <td>
+                      <span [style.color]="s.diasTranscurridos > 25 ? 'var(--warning)' : 'var(--ink)'">
+                        {{ s.diasTranscurridos }} d
+                      </span>
+                    </td>
+                    <td>{{ s.clienteNombre }}</td>
+                    <td class="amount-text">S/ {{ s.total }}</td>
+                    <td>{{ s.mediosPago }}</td>
+                    <td>
+                      <button mat-flat-button color="primary" (click)="selectSale(s.idVenta)">
+                        Seleccionar
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <app-empty-state
+            icon="receipt_long"
+            title="Buscar comprobante de venta"
+            description="Ingresa el número de boleta, factura, nota de venta o cliente para cargar sus productos. Solo se aceptan ventas confirmadas dentro del plazo configurado sin devoluciones pendientes.">
+          </app-empty-state>
+        }
+      } @else {
+        <!-- Step 2: Selected Sale & Lines -->
+        <div class="step-header">
+          <h2 class="step-title">Paso 2: Productos a devolver</h2>
+          <button mat-stroked-button (click)="unselectSale()">
+            <app-icon name="edit"></app-icon> Cambiar de venta
+          </button>
+        </div>
+
+        <!-- Sale Header Card -->
+        <div class="sale-card">
+          <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+            <div>
+              <span style="font-size: 1.1rem; font-weight: 800; color: var(--ink);">{{ selectedSale()!.venta.comprobante }}</span>
+              <span style="font-size: 1rem; color: var(--muted); margin-left: 0.75rem;">Fecha: {{ selectedSale()!.venta.fechaVenta }} (hace {{ selectedSale()!.venta.diasTranscurridos }} días)</span>
+            </div>
+            <div>
+              <span style="font-size: 1rem; color: var(--muted);">Total venta: <strong>S/ {{ selectedSale()!.venta.total }}</strong></span>
+              @if (selectedSale()!.saldoDeuda && +selectedSale()!.saldoDeuda > 0) {
+                <span style="margin-left: 1rem; color: var(--warning); font-weight: 700;">Deuda pendiente: S/ {{ selectedSale()!.saldoDeuda }}</span>
+              }
+            </div>
+          </div>
+          <div style="font-size: 1rem; color: var(--ink);">
+            Cliente: <strong>{{ selectedSale()!.venta.clienteNombre }}</strong> ({{ selectedSale()!.venta.clienteDocumento || 'Sin doc' }})
+          </div>
+        </div>
+
+        <!-- Items Table -->
+        <div class="table-card">
+          <div style="display: flex; justify-content: flex-end; padding: 0.75rem 1rem; background: var(--surface-alt); border-bottom: 1px solid var(--line);">
+            <button mat-stroked-button (click)="devolverTodo()">
+              <app-icon name="done_all"></app-icon> Devolver todo lo disponible
+            </button>
+          </div>
+          <table class="items-input-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Unidad</th>
+                <th>Vendido</th>
+                <th>Ya devuelto</th>
+                <th>Disponible</th>
+                <th style="width: 120px;">Cantidad a devolver</th>
+                <th>Estado físico</th>
+                <th>Precio unitario</th>
+                <th>Importe</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of selectedSale()!.items; track item.idDetalleVenta) {
+                <tr>
+                  <td>
+                    <strong>{{ item.nombreProducto }}</strong>
+                    <div style="font-size: 1rem; color: var(--muted);">{{ item.codigoProducto }} &bull; {{ item.presentacionNombre }}</div>
+                  </td>
+                  <td>{{ item.unidadBaseSimbolo }}</td>
+                  <td>{{ item.cantidadVendida }}</td>
+                  <td>{{ item.yaDevuelto }}</td>
+                  <td><strong>{{ item.disponibleDevolver }}</strong></td>
+                  <td>
+                    <input
+                      type="number"
+                      class="qty-input"
+                      [min]="0"
+                      [max]="+item.disponibleDevolver"
+                      [step]="+item.incrementoBase / +item.factorBase"
+                      [attr.aria-label]="'Cantidad a devolver de '+item.nombreProducto"
+                      [disabled]="busy() || !!pending()"
+                      [value]="lineQuantities()[item.idDetalleVenta] || 0"
+                      (change)="updateLineQuantity(item.idDetalleVenta, $event)"
+                    >
+                  </td>
+                  <td>
+                    <select
+                      class="cond-select"
+                      [attr.aria-label]="'Estado físico de '+item.nombreProducto"
+                      [disabled]="busy() || !!pending()"
+                      [value]="lineConditions()[item.idDetalleVenta] || 'APTO'"
+                      (change)="updateLineCondition(item.idDetalleVenta, $event)"
+                    >
+                      <option value="APTO">Apto (retorna a stock)</option>
+                      <option value="DANADO">Dañado (merma física)</option>
+                    </select>
+                  </td>
+                  <td>S/ {{ item.precioUnitario }}</td>
+                  <td class="amount-text">
+                    S/ {{ ((lineQuantities()[item.idDetalleVenta] || 0) * +item.precioUnitario).toFixed(2) }}
+                  </td>
+                </tr>
+                @if ((lineQuantities()[item.idDetalleVenta] || 0)>0 && (lineConditions()[item.idDetalleVenta] || 'APTO')==='APTO' && item.modoControl!=='GRANEL') {
+                  <tr><td colspan="9">
+                    <section class="return-plan" [attr.aria-label]="'Retorno físico de '+item.nombreProducto">
+                      <p>Detalla cada {{ item.modoControl==='TRAMOS' ? 'tramo' : 'envase o porción suelta' }} apto que regresa. Cantidades en {{ item.unidadBaseSimbolo }}. Total requerido: {{ (lineQuantities()[item.idDetalleVenta] || 0) * +item.factorBase }}.</p>
+                      @for (unit of returnUnits()[item.idDetalleVenta] || []; track $index; let i=$index) {
+                        <div class="return-unit">
+                          @if (item.modoControl==='ENVASES') {
+                            <label>Condición <select [disabled]="busy() || !!pending()" [value]="unit.condicion" (change)="updateReturnUnit(item,i,'condicion',$event)"><option value="SUELTO">Suelto</option><option value="ENVASE">Envase íntegro</option></select></label>
+                          }
+                          @if (unit.condicion==='ENVASE') {
+                            <label>Presentación <select [disabled]="busy() || !!pending()" [value]="unit.presentacionId || ''" (change)="updateReturnUnit(item,i,'presentacionId',$event)"><option value="">Seleccionar</option>@for (pres of item.presentacionesRetorno || []; track pres.id) {<option [value]="pres.id">{{ pres.nombre }} · {{ pres.factorBase }} {{ item.unidadBaseSimbolo }}</option>}</select></label>
+                          }
+                          <label>Cantidad ({{ item.unidadBaseSimbolo }}) <input type="text" inputmode="decimal" [disabled]="busy() || !!pending() || unit.condicion==='ENVASE'" [value]="unit.cantidad" (input)="updateReturnUnit(item,i,'cantidad',$event)"></label>
+                          <button mat-stroked-button [disabled]="busy() || !!pending()" (click)="removeReturnUnit(item.idDetalleVenta,i)">Quitar unidad {{ i+1 }}</button>
+                        </div>
+                      }
+                      <button mat-stroked-button [disabled]="busy() || !!pending()" (click)="addReturnUnit(item)">Añadir unidad física</button>
+                    </section>
+                  </td></tr>
+                }
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Refund Summary -->
+        <div class="refund-summary-box">
+          <div>
+            <span style="font-size: 1rem; color: var(--success); font-weight: 700;">Total a reintegrar calculado:</span>
+            <div style="font-size: 1rem; color: var(--muted);">Calculado según el precio real con descuentos de la venta</div>
+          </div>
+          <div class="refund-total">S/ {{ calculatedRefundTotal().toFixed(2) }}</div>
+        </div>
+
+        <!-- Step 3: Motive and Refund Form -->
+        <div class="sale-card" [formGroup]="newReturnForm">
+          <h3 style="margin: 0 0 0.5rem 0; font-size: 1.05rem; font-weight: 700; color: var(--ink);">Motivo y forma de reintegro</h3>
+          
+          <mat-form-field appearance="outline" class="w-full">
+            <mat-label>Motivo de la devolución (10 a 200 caracteres)</mat-label>
+            <textarea matInput formControlName="motivo" rows="2" placeholder="Explique la razón de la devolución de los artículos"></textarea>
+          </mat-form-field>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
+            <mat-form-field appearance="outline">
+              <mat-label>Forma de reintegro</mat-label>
+              <select matNativeControl formControlName="forma">
+                <option value="EFECTIVO">Efectivo</option>
+                <option value="YAPE">Yape (billetera digital)</option>
+                <option value="DEBITO">Tarjeta de débito</option>
+                @if (selectedSale()!.saldoDeuda && +selectedSale()!.saldoDeuda > 0) {
+                  <option value="DESCUENTO_DEUDA">Descontar de la deuda (saldo: S/ {{ selectedSale()!.saldoDeuda }})</option>
+                }
+              </select>
+            </mat-form-field>
+
+            @if (isAdmin()) {
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <input type="checkbox" id="autoAprobarCheck" formControlName="autoAprobar" style="width: 18px; height: 18px;">
+                <label for="autoAprobarCheck" style="font-size: 1rem; font-weight: 600; color: var(--ink); cursor: pointer;">
+                  Autorizar y aplicar de inmediato
+                </label>
+              </div>
+            }
+          </div>
+
+          @if (isAdmin() && newReturnForm.get('autoAprobar')?.value) {
+            <div class="meta-grid" style="margin-top: 0.5rem;">
+              <div class="meta-box">
+                <span class="meta-lbl">Caja operativa del día</span>
+                <span class="meta-val">
+                  @if (todayCash()) {
+                    Caja N.° {{ todayCash()!.idCaja }} &bull; Estado: {{ todayCash()!.estadoCaja }} &bull; Efectivo disp: S/ {{ todayCash()!.efectivoDisponible }}
+                  } @else {
+                    <span style="color: var(--danger); font-weight: 700;">No hay caja abierta hoy</span>
+                  }
+                </span>
+              </div>
+            </div>
+
+            @if (newReturnForm.get('forma')?.value === 'YAPE' || newReturnForm.get('forma')?.value === 'DEBITO') {
+              <mat-form-field appearance="outline" class="w-full" style="margin-top: 0.5rem;">
+                <mat-label>Código de operación / referencia de reintegro</mat-label>
+                <input matInput formControlName="referencia" placeholder="Ej: 849204">
+              </mat-form-field>
+            }
+
+            <mat-form-field appearance="outline" class="w-full">
+              <mat-label>Observación de autorización (opcional)</mat-label>
+              <input matInput formControlName="observacion" placeholder="Detalle adicional">
+            </mat-form-field>
+          }
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1rem;">
+            <button mat-stroked-button (click)="setMode('list')">Cancelar</button>
+            <button
+              mat-flat-button
+              color="primary"
+              [disabled]="busy() || calculatedRefundTotal() <= 0 || newReturnForm.invalid"
+              (click)="submitNewReturn()"
+            >
+              {{ isAdmin() && newReturnForm.get('autoAprobar')?.value ? 'Registrar y autorizar devolución' : 'Enviar para autorización' }}
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- DETAIL MODAL -->
+  @if (detailModal()) {
+    <div class="modal-backdrop">
+      <div class="modal-card detail-modal" appModal [modalLocked]="busy()" (modalClose)="detailModal.set(null)" aria-label="Detalle de devolución">
+        <div class="modal-header">
+          <h2 class="modal-title">Detalle de Devolución {{ detailModal()!.cabecera.codigo }}</h2>
+          <button class="modal-close" (click)="detailModal.set(null)" aria-label="Cerrar">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="meta-grid">
+            <div class="meta-box">
+              <span class="meta-lbl">Comprobante</span>
+              <span class="meta-val">{{ detailModal()!.cabecera.comprobante }}</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-lbl">Cliente</span>
+              <span class="meta-val">{{ detailModal()!.cabecera.clienteNombre }}</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-lbl">Fecha solicitud</span>
+              <span class="meta-val">{{ detailModal()!.cabecera.fechaSolicitud }}</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-lbl">Monto reintegro</span>
+              <span class="meta-val" style="color: var(--success); font-weight: 800;">S/ {{ detailModal()!.cabecera.montoReintegro }}</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-lbl">Forma de reintegro</span>
+              <span class="meta-val">{{ formatForma(detailModal()!.cabecera.formaReintegro) }}</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-lbl">Estado</span>
+              <span class="meta-val">
+                <span class="status-pill {{ detailModal()!.cabecera.estadoDevolucion.toLowerCase() }}">
+                  {{ detailModal()!.cabecera.estadoDevolucion }}
+                </span>
+              </span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-lbl">Solicitado por</span>
+              <span class="meta-val">{{ detailModal()!.cabecera.solicitanteNombre }}</span>
+            </div>
+            @if (detailModal()!.cabecera.autorizadorNombre) {
+              <div class="meta-box">
+                <span class="meta-lbl">Decisión por</span>
+                <span class="meta-val">{{ detailModal()!.cabecera.autorizadorNombre }} ({{ detailModal()!.cabecera.fechaDecision }})</span>
+              </div>
+            }
+          </div>
+
+          <div style="background: var(--surface-alt); padding: 0.75rem; border-radius: 4px; border: 1px solid var(--line);">
+            <div style="font-size: 1rem; font-weight: 700; color: var(--muted);">Motivo:</div>
+            <div style="font-size: 1rem; color: var(--ink); margin-top: 0.25rem;">{{ detailModal()!.cabecera.motivo }}</div>
+          </div>
+
+          @if (detailModal()!.cabecera.motivoRechazo) {
+            <div class="alert alert-error">
+              <div><strong>Motivo de rechazo:</strong> {{ detailModal()!.cabecera.motivoRechazo }}</div>
+            </div>
+          }
+
+          <table class="custom-table" style="margin-top: 0.5rem;">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Unidad</th>
+                <th>Cantidad</th>
+                <th>Estado físico</th>
+                <th>Importe</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of detailModal()!.items; track item.id) {
+                <tr>
+                  <td>
+                    <strong>{{ item.nombreProducto }}</strong>
+                    <div style="font-size: 1rem; color: var(--muted);">{{ item.codigoProducto }} &bull; {{ item.presentacionNombre }}</div>
+                  </td>
+                  <td>{{ item.unidadBaseSimbolo }}</td>
+                  <td><strong>{{ item.cantidad }}</strong></td>
+                  <td>
+                    <span [style.color]="item.estadoProducto === 'APTO' ? 'var(--success)' : 'var(--danger)'" style="font-weight: 700;">
+                      {{ item.estadoProducto === 'APTO' ? 'Apto (repuesto)' : 'Dañado (merma)' }}
+                    </span>
+                  </td>
+                  <td class="amount-text">S/ {{ item.importe }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-actions">
+          <button mat-flat-button (click)="detailModal.set(null)">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- APPROVE MODAL -->
+  @if (approveTarget()) {
+    <div class="modal-backdrop">
+      <div class="modal-card" appModal [modalLocked]="busy() || !!pending()" (modalClose)="approveTarget.set(null)" aria-label="Autorizar devolución">
+        <div class="modal-header">
+          <h2 class="modal-title">Autorizar Devolución {{ approveTarget()!.codigo }}</h2>
+          <button class="modal-close" [disabled]="busy() || !!pending()" (click)="approveTarget.set(null)" aria-label="Cerrar">&times;</button>
+        </div>
+        <div class="modal-body" [formGroup]="approveForm">
+          @if (error()) { <p role="alert">{{ error() }}</p> }
+          @if (pending() && !busy()) { <p role="status">El resultado no está confirmado.</p><button mat-stroked-button (click)="retry()">Reintentar la misma operación</button> }
+          <div class="sale-card">
+            <div>Venta: <strong>{{ approveTarget()!.comprobante }}</strong> &bull; Cliente: <strong>{{ approveTarget()!.clienteNombre }}</strong></div>
+            <div>Monto a reintegrar: <strong style="color: var(--success); font-size: 1.15rem;">S/ {{ approveTarget()!.montoReintegro }}</strong></div>
+            <div>Forma: <strong>{{ formatForma(approveTarget()!.formaReintegro) }}</strong></div>
+          </div>
+
+          @if (!todayCash() || todayCash()!.estadoCaja !== 'ABIERTA') {
+            <div class="alert alert-warning">
+              <app-icon name="warning"></app-icon>
+              <span>Abra la caja para autorizar el reintegro. No hay una caja abierta registrada para el día de hoy.</span>
+            </div>
+          } @else {
+            <div style="font-size: 1rem; color: var(--muted);">
+              Se registrará el egreso correspondiente en la Caja N.° {{ todayCash()!.idCaja }}.
+            </div>
+          }
+
+          @if (approveTarget()!.formaReintegro === 'YAPE' || approveTarget()!.formaReintegro === 'DEBITO') {
+            <mat-form-field appearance="outline" class="w-full">
+              <mat-label>Código de operación / referencia obligatoria</mat-label>
+              <input matInput formControlName="referencia" placeholder="Ej: 948201">
+            </mat-form-field>
+          }
+
+          <mat-form-field appearance="outline" class="w-full">
+            <mat-label>Observación de autorización (opcional)</mat-label>
+            <input matInput formControlName="observacion" placeholder="Detalle adicional">
+          </mat-form-field>
+        </div>
+        <div class="modal-actions">
+          <button mat-stroked-button [disabled]="busy() || !!pending()" (click)="approveTarget.set(null)">Cancelar</button>
+          <button
+            mat-flat-button
+            color="primary"
+            [disabled]="busy() || !todayCash() || todayCash()!.estadoCaja !== 'ABIERTA'"
+            (click)="confirmApprove()"
+          >
+            Confirmar autorización
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- REJECT MODAL -->
+  @if (rejectTarget()) {
+    <div class="modal-backdrop">
+      <div class="modal-card" appModal [modalLocked]="busy() || !!pending()" (modalClose)="rejectTarget.set(null)" aria-label="Rechazar devolución">
+        <div class="modal-header">
+          <h2 class="modal-title">Rechazar Devolución {{ rejectTarget()!.codigo }}</h2>
+          <button class="modal-close" [disabled]="busy() || !!pending()" (click)="rejectTarget.set(null)" aria-label="Cerrar">&times;</button>
+        </div>
+        <div class="modal-body" [formGroup]="rejectForm">
+          @if (error()) { <p role="alert">{{ error() }}</p> }
+          @if (pending() && !busy()) { <p role="status">El resultado no está confirmado.</p><button mat-stroked-button (click)="retry()">Reintentar la misma operación</button> }
+          <div class="sale-card">
+            <div>Venta: <strong>{{ rejectTarget()!.comprobante }}</strong> &bull; Cliente: <strong>{{ rejectTarget()!.clienteNombre }}</strong></div>
+            <div>Monto solicitado: <strong>S/ {{ rejectTarget()!.montoReintegro }}</strong></div>
+          </div>
+
+          <mat-form-field appearance="outline" class="w-full">
+            <mat-label>Motivo de rechazo (10 a 200 caracteres)</mat-label>
+            <textarea matInput formControlName="motivo" rows="3" placeholder="Indique claramente por qué se rechaza la solicitud"></textarea>
+          </mat-form-field>
+        </div>
+        <div class="modal-actions">
+          <button mat-stroked-button [disabled]="busy() || !!pending()" (click)="rejectTarget.set(null)">Cancelar</button>
+          <button
+            mat-flat-button
+            color="warn"
+            [disabled]="busy() || rejectForm.invalid"
+            (click)="confirmReject()"
+          >
+            Rechazar solicitud
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

@@ -1,0 +1,426 @@
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Ventas</p>
+    <h1>Cuentas por cobrar</h1>
+    <p>Revisa saldos pendientes, estados de cuenta y el registro de abonos.</p>
+  </div>
+</div>
+
+@if (error()) {
+  <p class="notice danger" role="alert">{{ error() }}</p>
+}
+@if (success()) {
+  <p class="notice info" role="status">{{ success() }}</p>
+}
+
+@if (options()?.caja?.estado !== 'ABIERTA') {
+  <p class="notice info" role="status">
+    <strong>Caja cerrada:</strong> Abra la caja diaria para registrar abonos.
+  </p>
+}
+
+@if (summary(); as s) {
+  <section class="summary-cards" aria-label="Resumen de créditos">
+    <div class="summary-card">
+      <span class="summary-label">Total por cobrar</span>
+      <span class="summary-value">S/ {{ s.totalPorCobrar }}</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Total vencido</span>
+      <span class="summary-value text-danger">S/ {{ s.totalVencido }}</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Clientes con deuda</span>
+      <span class="summary-value">{{ s.clientesDeudores }}</span>
+    </div>
+  </section>
+}
+
+<!-- VISTA DE ESTADO DE CUENTA DE UN CLIENTE -->
+@if (selectedCustomer(); as custId) {
+  @if (statement(); as st) {
+    <section class="panel" [class.pos-receipt]="printingStatement()" aria-labelledby="statement-title">
+      <div class="statement-header">
+        <div>
+          <h2 id="statement-title">Estado de cuenta: {{ st.cliente.nombre }}</h2>
+          <p>{{ st.cliente.tipoDocumento }}: {{ st.cliente.documento }} @if(st.cliente.telefono) { · Tel: {{ st.cliente.telefono }} }</p>
+        </div>
+        <div class="statement-metrics">
+          <div>
+            <span class="summary-label">Línea de crédito</span>
+            <span class="metric-value">S/ {{ st.cliente.limiteCredito }}</span>
+          </div>
+          <div>
+            <span class="summary-label">Deuda actual</span>
+            <span class="metric-value text-danger">S/ {{ st.cliente.deudaTotal }}</span>
+          </div>
+          <div>
+            <span class="summary-label">Crédito disponible</span>
+            <span class="metric-value text-success">S/ {{ st.cliente.creditoDisponible }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-actions mb-4">
+        <button mat-stroked-button type="button" (click)="closeStatement()">
+          Volver a la lista
+        </button>
+        <button mat-stroked-button type="button" (click)="printStatement()">
+          Imprimir estado de cuenta
+        </button>
+        @if (auth.has('CRE.ABONAR') && hasPendingDebt(st.cuentas)) {
+          <button mat-flat-button type="button" [disabled]="!isCashOpen()" (click)="openPaymentFromStatement()">
+            Registrar abono
+          </button>
+        }
+        @if (auth.has('VEN.VENDER')) {
+          <a mat-stroked-button [routerLink]="['/ventas/punto-de-venta']" [queryParams]="{cliente: st.cliente.id}">
+            Nueva venta al crédito
+          </a>
+        }
+      </div>
+
+      <h3>Cuentas por cobrar</h3>
+      @if (st.cuentas.length) {
+        <div class="table-scroll">
+          <table aria-label="Cuentas del cliente">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Comprobante</th>
+                <th>Monto original</th>
+                <th>Abonado</th>
+                <th>Saldo</th>
+                <th>Vencimiento</th>
+                <th>Estado</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of st.cuentas; track c.id) {
+                <tr>
+                  <td>{{ c.fechaVenta }}</td>
+                  <td>{{ c.comprobante }}</td>
+                  <td>S/ {{ c.montoOriginal }}</td>
+                  <td>S/ {{ c.montoAbonado }}</td>
+                  <td><strong>S/ {{ c.saldo }}</strong></td>
+                  <td>{{ c.fechaVencimiento }}</td>
+                  <td>
+                    <span class="badge" [class.danger]="c.estadoCuenta === 'VENCIDA'" [class.success]="c.estadoCuenta === 'CANCELADA'">
+                      {{ c.estadoCuenta === 'CANCELADA' ? 'Cancelada' : (c.estadoCuenta === 'VENCIDA' ? 'Vencida' : 'Pendiente') }}
+                    </span>
+                  </td>
+                  <td>
+                    @if (auth.has('CRE.ABONAR') && c.saldo !== '0.00' && c.estadoCuenta !== 'ANULADA') {
+                      <button mat-flat-button size="small" [disabled]="!isCashOpen()" (click)="openPaymentForAccount(c)">
+                        Abonar
+                      </button>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <app-empty-state icon="account_balance_wallet" title="Sin cuentas pendientes" description="Este cliente no tiene deudas registradas." />
+      }
+
+      <h3 class="mt-4">Historial de abonos</h3>
+      @if (st.abonos.length) {
+        <div class="table-scroll">
+          <table aria-label="Abonos del cliente">
+            <thead>
+              <tr>
+                <th>Fecha y hora</th>
+                <th>Comprobante amortizado</th>
+                <th>Monto</th>
+                <th>Medio de pago</th>
+                <th>N.º operación</th>
+                <th>Registrado por</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (a of st.abonos; track a.id) {
+                <tr>
+                  <td>{{ a.fecha }}</td>
+                  <td>{{ a.comprobante }}</td>
+                  <td><strong>S/ {{ a.monto }}</strong></td>
+                  <td>{{ formatMedio(a.medio) }}</td>
+                  <td>{{ a.operacion || (a.ultimosCuatro ? '**** ' + a.ultimosCuatro : '—') }}</td>
+                  <td>{{ a.registradoPor }}</td>
+                  <td>
+                    <button mat-stroked-button (click)="viewReceipt(a.id)">
+                      Constancia
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <p class="empty-note">Aún no se han registrado abonos para este cliente.</p>
+      }
+    </section>
+  }
+} @else {
+  <!-- VISTA PRINCIPAL: LISTA DE CUENTAS POR COBRAR / DEUDORES -->
+  <section class="panel">
+    <form class="list-filters" [formGroup]="filters" (ngSubmit)="apply()">
+      <div class="filter-fields">
+        <mat-form-field appearance="outline">
+          <mat-label>Cliente, DNI/RUC o comprobante</mat-label>
+          <input matInput type="search" formControlName="buscar" maxlength="100">
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Estado de cuenta</mat-label>
+          <mat-select formControlName="estado">
+            <mat-option value="">Todas</mat-option>
+            <mat-option value="PENDIENTE">Pendientes</mat-option>
+            <mat-option value="VENCIDA">Vencidas</mat-option>
+            <mat-option value="CANCELADA">Canceladas</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-checkbox formControlName="soloVencidas">Solo vencidas</mat-checkbox>
+      </div>
+
+      <div class="filter-actions">
+        <button mat-flat-button [disabled]="loading()">Aplicar filtros</button>
+        <button mat-stroked-button type="button" (click)="clear()">Limpiar</button>
+        <button mat-stroked-button type="button" (click)="reload()">Actualizar</button>
+      </div>
+    </form>
+
+    @if (rows().length) {
+      <div class="table-scroll">
+        <table aria-label="Cuentas por cobrar">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Comprobante</th>
+              <th>Fecha venta</th>
+              <th>Monto original</th>
+              <th>Abonado</th>
+              <th>Saldo</th>
+              <th>Vencimiento</th>
+              <th>Situación</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of rows(); track r.id) {
+              <tr>
+                <td>
+                  <strong>{{ r.cliente }}</strong><br>
+                  <small class="text-muted">{{ r.documento }}</small>
+                </td>
+                <td>{{ r.comprobante }}</td>
+                <td>{{ r.fechaVenta }}</td>
+                <td>S/ {{ r.montoOriginal }}</td>
+                <td>S/ {{ r.montoAbonado }}</td>
+                <td><strong>S/ {{ r.saldo }}</strong></td>
+                <td>{{ r.fechaVencimiento }}</td>
+                <td>
+                  <span class="badge" [class.danger]="r.estadoCuenta === 'VENCIDA'" [class.warning]="r.situacion === 'POR_VENCER'" [class.success]="r.estadoCuenta === 'CANCELADA'">
+                    {{ r.estadoCuenta === 'CANCELADA' ? 'Cancelada' : (r.estadoCuenta === 'VENCIDA' ? 'Vencida' : (r.situacion === 'POR_VENCER' ? 'Por vencer' : 'Al día')) }}
+                  </span>
+                </td>
+                <td>
+                  <div class="table-actions">
+                    <button mat-stroked-button (click)="openStatement(r.clienteId)">
+                      Estado de cuenta
+                    </button>
+                    @if (auth.has('CRE.ABONAR') && r.saldo !== '0.00' && r.estadoCuenta !== 'ANULADA') {
+                      <button mat-flat-button [disabled]="!isCashOpen()" (click)="openPayment(r)">
+                        Abonar
+                      </button>
+                    }
+                    @if (auth.has('VEN.VENDER') && r.saldo !== '0.00') {
+                      <a mat-stroked-button [routerLink]="['/ventas/punto-de-venta']" [queryParams]="{cliente: r.clienteId}">
+                        Nueva venta
+                      </a>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else if (loaded()) {
+      <app-empty-state icon="account_balance_wallet" title="No hay cuentas por cobrar" description="No se encontraron cuentas pendientes con los filtros aplicados." />
+    }
+
+    <div class="catalog-pagination">
+      <span>{{ total() }} cuentas</span>
+      <div>
+        <button mat-stroked-button [disabled]="page() === 0 || loading()" (click)="page.set(page() - 1)">Anterior</button>
+        <span>Página {{ page() + 1 }}</span>
+        <button mat-stroked-button [disabled]="(page() + 1) * 20 >= total() || loading()" (click)="page.set(page() + 1)">Siguiente</button>
+      </div>
+    </div>
+  </section>
+}
+
+<!-- MODAL / FORMULARIO DE REGISTRO DE ABONO -->
+@if (paymentTarget(); as target) {
+  <div class="modal-backdrop">
+    <div class="modal-card" appModal [modalLocked]="savingPayment() || !!pendingPayment()" (modalClose)="closePaymentModal()" aria-label="Registrar abono">
+      <h2 id="modal-payment-title">Registrar abono de crédito</h2>
+      <p class="modal-subtitle">
+        Cliente: <strong>{{ target.clienteNombre }}</strong> · Comprobante: <strong>{{ target.comprobante }}</strong>
+      </p>
+      <p class="saldo-destacado">
+        Saldo pendiente: <strong>S/ {{ target.saldo }}</strong>
+      </p>
+
+      @if (error()) { <p role="alert">{{ error() }}</p> }
+      @if (pendingPayment() && !savingPayment()) { <p role="status">No se pudo confirmar el resultado. Reintenta el mismo abono antes de registrar otro.</p> }
+      <form [formGroup]="paymentForm" (ngSubmit)="submitPayment()">
+        <mat-form-field appearance="outline" class="w-100">
+          <mat-label>Monto a abonar (S/)</mat-label>
+          <input matInput type="text" inputmode="decimal" formControlName="monto">
+          <mat-error>Ingrese un monto válido mayor a 0 y no mayor al saldo (S/ {{ target.saldo }}).</mat-error>
+        </mat-form-field>
+        <button type="button" mat-button class="btn-pay-all mb-3" (click)="setPayAll(target.saldo)">
+          Abonar saldo completo (S/ {{ target.saldo }})
+        </button>
+
+        <mat-form-field appearance="outline" class="w-100">
+          <mat-label>Medio de pago</mat-label>
+          <mat-select formControlName="medio">
+            <mat-option value="EFECTIVO">Efectivo</mat-option>
+            <mat-option value="YAPE">Yape</mat-option>
+            <mat-option value="DEBITO">Tarjeta de débito</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        @if (paymentForm.controls.medio.value === 'YAPE') {
+          <mat-form-field appearance="outline" class="w-100">
+            <mat-label>N.º de operación Yape (6 a 20 dígitos)</mat-label>
+            <input matInput type="text" formControlName="operacion" maxlength="20">
+            <mat-error>El número de operación debe contener entre 6 y 20 dígitos numéricos.</mat-error>
+          </mat-form-field>
+        }
+
+        @if (paymentForm.controls.medio.value === 'DEBITO') {
+          <mat-form-field appearance="outline" class="w-100">
+            <mat-label>N.º de operación POS</mat-label>
+            <input matInput type="text" formControlName="operacion" maxlength="40">
+            <mat-error>Ingrese el número de operación del comprobante de débito.</mat-error>
+          </mat-form-field>
+          <div class="card-extra-fields">
+            <mat-form-field appearance="outline">
+              <mat-label>Marca de tarjeta</mat-label>
+              <input matInput type="text" formControlName="marca" placeholder="Visa, Mastercard...">
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Últimos 4 dígitos</mat-label>
+              <input matInput type="text" formControlName="ultimosCuatro" maxlength="4" placeholder="1234">
+            </mat-form-field>
+          </div>
+        }
+
+        <mat-form-field appearance="outline" class="w-100">
+          <mat-label>Observación (opcional)</mat-label>
+          <textarea matInput formControlName="observacion" rows="2" maxlength="300"></textarea>
+        </mat-form-field>
+
+        <div class="form-actions">
+          <button mat-stroked-button type="button" [disabled]="savingPayment() || !!pendingPayment()" (click)="closePaymentModal()">
+            Cancelar
+          </button>
+          <button mat-flat-button [disabled]="savingPayment() || (!pendingPayment() && (paymentForm.invalid || !isCashOpen()))">
+            {{ pendingPayment() ? 'Reintentar el mismo abono' : 'Confirmar abono' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}
+
+<!-- MODAL / VISTA DE CONSTANCIA DE ABONO IMPRIMIBLE -->
+@if (activeReceipt(); as rc) {
+  <div class="modal-backdrop print-modal">
+    <div class="modal-card receipt-card" appModal [modalLocked]="false" (modalClose)="closeReceipt()" aria-label="Constancia de abono">
+      <div class="receipt-print-area pos-receipt ticket" id="voucher-print">
+        <div class="receipt-header">
+          <h2>{{ rc.negocioNombre }}</h2>
+          @if (rc.negocioRuc) { <p>RUC: {{ rc.negocioRuc }}</p> }
+          @if (rc.negocioDireccion) { <p>{{ rc.negocioDireccion }}</p> }
+          @if (rc.negocioTelefono) { <p>Tel: {{ rc.negocioTelefono }}</p> }
+          <hr>
+          <h3 id="receipt-title">CONSTANCIA DE ABONO</h3>
+          <p class="receipt-number">N.º {{ rc.id }}</p>
+          <p class="receipt-date">{{ rc.fecha }}</p>
+        </div>
+
+        <div class="receipt-body">
+          <div class="receipt-row">
+            <span>Cliente:</span>
+            <strong>{{ rc.cliente }}</strong>
+          </div>
+          <div class="receipt-row">
+            <span>{{ rc.tipoDocumento }}:</span>
+            <span>{{ rc.documento }}</span>
+          </div>
+          <div class="receipt-row">
+            <span>Comprobante amortizado:</span>
+            <span>{{ rc.comprobante }}</span>
+          </div>
+          <div class="receipt-row">
+            <span>Medio de pago:</span>
+            <span>{{ formatMedio(rc.medio) }}</span>
+          </div>
+          @if (rc.operacion) {
+            <div class="receipt-row">
+              <span>N.º operación:</span>
+              <span>{{ rc.operacion }}</span>
+            </div>
+          }
+          @if (rc.ultimosCuatro) {
+            <div class="receipt-row">
+              <span>Tarjeta:</span>
+              <span>{{ rc.marca || 'Débito' }} **** {{ rc.ultimosCuatro }}</span>
+            </div>
+          }
+          @if (rc.observacion) {
+            <div class="receipt-row">
+              <span>Observación:</span>
+              <span>{{ rc.observacion }}</span>
+            </div>
+          }
+          <hr>
+          <div class="receipt-row">
+            <span>Saldo anterior:</span>
+            <span>S/ {{ rc.saldoAnteriorCuenta }}</span>
+          </div>
+          <div class="receipt-row highlight">
+            <span>Monto abonado:</span>
+            <strong>S/ {{ rc.monto }}</strong>
+          </div>
+          <div class="receipt-row">
+            <span>Saldo restante:</span>
+            <strong>S/ {{ rc.saldoActualCuenta }}</strong>
+          </div>
+          <hr>
+          <p class="receipt-footer">Atendido por: {{ rc.registradoPor }}</p>
+          <p class="receipt-footer text-muted">Conserve este comprobante como constancia de su pago.</p>
+        </div>
+      </div>
+
+      <div class="form-actions mt-3">
+        <button mat-stroked-button type="button" (click)="closeReceipt()">
+          Cerrar
+        </button>
+        <button mat-flat-button type="button" (click)="printReceipt()">
+          Imprimir constancia
+        </button>
+      </div>
+    </div>
+  </div>
+}

@@ -1,0 +1,433 @@
+<div class="dispatch-container">
+  <!-- Header -->
+  <header class="page-header print-hidden">
+    <div class="header-titles">
+      <div class="header-icon-badge">
+        <app-icon name="local_mall"></app-icon>
+      </div>
+      <div>
+        <h1 class="page-title">Despacho de pedidos</h1>
+        <p class="page-desc">Organiza la preparación y entrega de las ventas desde el almacén.</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button mat-stroked-button type="button" (click)="reload()" [disabled]="busy() || loading()">
+        <app-icon name="refresh"></app-icon>
+        Actualizar
+      </button>
+    </div>
+  </header>
+
+  <!-- Alerts -->
+  @if (error()) {
+    <div class="alert alert-error print-hidden" role="alert">
+      <app-icon name="error"></app-icon>
+      <span>{{ error() }}</span>
+      <button class="alert-close" type="button" (click)="error.set('')" aria-label="Cerrar">✕</button>
+    </div>
+  }
+  @if (success()) {
+    <div class="alert alert-success print-hidden" role="status">
+      <app-icon name="check_circle"></app-icon>
+      <span>{{ success() }}</span>
+      <button class="alert-close" type="button" (click)="success.set('')" aria-label="Cerrar">✕</button>
+    </div>
+  }
+
+  <!-- Tabs Navigation -->
+  <nav class="tabs-nav print-hidden" aria-label="Estados de despacho">
+    <button
+      type="button"
+      class="tab-btn"
+      [class.active]="activeTab() === 'PENDIENTE'"
+      (click)="setTab('PENDIENTE')"
+    >
+      <app-icon name="pending_actions"></app-icon>
+      <span>Pendientes</span>
+      <span class="tab-badge warning">{{ summary().pendientes }}</span>
+    </button>
+    <button
+      type="button"
+      class="tab-btn"
+      [class.active]="activeTab() === 'PREPARADO'"
+      (click)="setTab('PREPARADO')"
+    >
+      <app-icon name="inventory_2"></app-icon>
+      <span>Preparados</span>
+      <span class="tab-badge info">{{ summary().preparados }}</span>
+    </button>
+    <button
+      type="button"
+      class="tab-btn"
+      [class.active]="activeTab() === 'ENTREGADO'"
+      (click)="setTab('ENTREGADO')"
+    >
+      <app-icon name="check_circle"></app-icon>
+      <span>Entregados</span>
+      <span class="tab-badge success">{{ summary().entregados }}</span>
+    </button>
+    <button
+      type="button"
+      class="tab-btn"
+      [class.active]="activeTab() === 'ANULADO'"
+      (click)="setTab('ANULADO')"
+    >
+      <app-icon name="cancel"></app-icon>
+      <span>Anulados</span>
+      <span class="tab-badge">{{ summary().anulados }}</span>
+    </button>
+  </nav>
+
+  <!-- Filter Bar -->
+  <form [formGroup]="filters" (ngSubmit)="applyFilters()" class="filter-bar print-hidden">
+    <div class="filter-field search-field">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Buscar por comprobante, cliente o N.º de pedido</mat-label>
+        <input matInput formControlName="buscar" placeholder="Ej: DP-000001, B001, Carlos">
+      </mat-form-field>
+    </div>
+
+    <div class="filter-field date-field">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Desde</mat-label>
+        <input matInput type="date" formControlName="desde">
+      </mat-form-field>
+    </div>
+
+    <div class="filter-field date-field">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Hasta</mat-label>
+        <input matInput type="date" formControlName="hasta">
+      </mat-form-field>
+    </div>
+
+    <div class="filter-actions">
+      <button mat-flat-button color="primary" type="submit" [disabled]="loading()">
+        <app-icon name="search"></app-icon>
+        Filtrar
+      </button>
+      <button mat-stroked-button type="button" (click)="clearFilters()" [disabled]="loading()">
+        Limpiar
+      </button>
+    </div>
+  </form>
+
+  <!-- Dispatch Cards List -->
+  @if (loading()) {
+    <div class="loading-state print-hidden">
+      <div class="spinner"></div>
+      <p>Cargando despachos...</p>
+    </div>
+  } @else if (rows().length === 0) {
+    <app-empty-state
+      class="print-hidden"
+      [icon]="activeTab() === 'PENDIENTE' ? 'task_alt' : 'inventory_2'"
+      [title]="activeTab() === 'PENDIENTE' ? 'No hay pedidos pendientes' : activeTab() === 'PREPARADO' ? 'No hay despachos preparados' : activeTab() === 'ENTREGADO' ? 'No hay pedidos entregados en este período' : 'No hay pedidos anulados'"
+      description="Los despachos se generan automáticamente a partir de las ventas confirmadas que no son para entrega inmediata."
+    ></app-empty-state>
+  } @else {
+    <div class="dispatch-grid print-hidden">
+      @for (d of rows(); track d.id) {
+        <article class="dispatch-card" [attr.data-status]="d.estado">
+          <header class="card-header">
+            <div class="card-title-group">
+              <span class="dispatch-number">{{ d.numeroFormateado }}</span>
+              <span class="status-badge" [class]="d.estado.toLowerCase()">
+                {{ d.estado }}
+              </span>
+            </div>
+            <div class="comprobante-tag">
+              <app-icon name="receipt"></app-icon>
+              <span>{{ d.comprobante || 'Nota de venta' }}</span>
+            </div>
+          </header>
+
+          <div class="card-body">
+            <div class="info-row">
+              <span class="info-label">Cliente:</span>
+              <span class="info-value strong">{{ d.clienteNombre }}</span>
+            </div>
+
+            @if (d.clienteDocumento) {
+              <div class="info-row">
+                <span class="info-label">Documento:</span>
+                <span class="info-value">{{ d.clienteDocumento }}</span>
+              </div>
+            }
+
+            <div class="info-row">
+              <span class="info-label">Venta:</span>
+              <span class="info-value">{{ d.fechaVenta }} ({{ timeAgo(d.fechaVenta) }})</span>
+            </div>
+
+            <div class="info-row">
+              <span class="info-label">Productos:</span>
+              <span class="info-value items-count">{{ d.totalItems }} líneas registradas</span>
+            </div>
+
+            @if (d.preparadoPor) {
+              <div class="audit-block prep-audit">
+                <div class="audit-header">
+                  <app-icon name="build"></app-icon>
+                  <span>Preparado por {{ d.preparadoPor }} ({{ d.fechaPreparacion }})</span>
+                </div>
+                @if (d.observacionPreparacion) {
+                  <p class="audit-obs">{{ d.observacionPreparacion }}</p>
+                }
+              </div>
+            }
+
+            @if (d.entregadoPor) {
+              <div class="audit-block delivery-audit">
+                <div class="audit-header">
+                  <app-icon name="local_shipping"></app-icon>
+                  <span>Entregado por {{ d.entregadoPor }} ({{ d.fechaEntrega }})</span>
+                </div>
+                @if (d.recibeNombre) {
+                  <div class="recibe-line">
+                    <strong>Retira:</strong> {{ d.recibeNombre }}
+                  </div>
+                }
+                @if (d.observacionEntrega) {
+                  <p class="audit-obs">{{ d.observacionEntrega }}</p>
+                }
+              </div>
+            }
+          </div>
+
+          <footer class="card-actions">
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="openSheet(d.id)"
+              title="Ver hoja de preparación"
+            >
+              <app-icon name="description"></app-icon>
+              Hoja de preparación
+            </button>
+
+            @if (canManage() && d.estado === 'PENDIENTE') {
+              <button
+                mat-flat-button
+                color="primary"
+                type="button"
+                (click)="openPrepareModal(d)"
+              >
+                <app-icon name="done"></app-icon>
+                Marcar preparado
+              </button>
+            }
+
+            @if (canManage() && d.estado === 'PREPARADO') {
+              <button
+                mat-flat-button
+                class="btn-deliver"
+                type="button"
+                (click)="openDeliverModal(d)"
+              >
+                <app-icon name="check_circle"></app-icon>
+                Confirmar entrega
+              </button>
+            }
+          </footer>
+        </article>
+      }
+    </div>
+  }
+</div>
+
+<!-- Modal 1: Hoja de preparación (P30.B1, P30.B4) -->
+@if (sheetDetail(); as sh) {
+  <div class="modal-backdrop">
+    <div class="modal-card preparation-sheet pos-receipt" appModal [modalLocked]="busy()" (modalClose)="closeSheet()" aria-label="Hoja de preparación">
+      <header class="sheet-header">
+        <div>
+          <h2 id="sheet-modal-title" class="sheet-title">Hoja de preparación de pedido</h2>
+          <span class="sheet-sub">{{ sh.despacho.numeroFormateado }} · Comprobante: {{ sh.despacho.comprobante || 'Nota de venta' }}</span>
+        </div>
+        <div class="sheet-header-actions print-hidden">
+          <button mat-flat-button color="primary" type="button" (click)="printSheet()">
+            <app-icon name="print"></app-icon>
+            Imprimir
+          </button>
+          <button mat-stroked-button type="button" (click)="closeSheet()">
+            Cerrar
+          </button>
+        </div>
+      </header>
+
+      <!-- Sheet meta info -->
+      <section class="sheet-meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">Cliente</span>
+          <span class="meta-val">{{ sh.despacho.clienteNombre }}</span>
+        </div>
+        @if (sh.despacho.clienteDocumento) {
+          <div class="meta-item">
+            <span class="meta-label">Documento</span>
+            <span class="meta-val">{{ sh.despacho.clienteDocumento }}</span>
+          </div>
+        }
+        <div class="meta-item">
+          <span class="meta-label">Fecha de venta</span>
+          <span class="meta-val">{{ sh.despacho.fechaVenta }}</span>
+        </div>
+        @if (sh.vendedor) {
+          <div class="meta-item">
+            <span class="meta-label">Vendedor</span>
+            <span class="meta-val">{{ sh.vendedor }}</span>
+          </div>
+        }
+        <div class="meta-item">
+          <span class="meta-label">Estado</span>
+          <span class="meta-val status-pill" [class]="sh.despacho.estado.toLowerCase()">
+            {{ sh.despacho.estado }}
+          </span>
+        </div>
+      </section>
+
+      @if (sh.observacionVenta) {
+        <div class="sheet-obs-callout">
+          <strong>Observación de venta:</strong> {{ sh.observacionVenta }}
+        </div>
+      }
+
+      <!-- Products table -->
+      <div class="sheet-table-wrap">
+        <table class="sheet-table">
+          <thead>
+            <tr>
+              <th class="col-check print-hidden">Listo</th>
+              <th>Código</th>
+              <th>Producto y presentación</th>
+              <th class="col-qty">Cantidad</th>
+              <th>Ubicación en almacén</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of sh.items; track item.id) {
+              <tr>
+                <td class="col-check print-hidden">
+                  <input type="checkbox" class="prep-checkbox" aria-label="Marcar como preparado">
+                </td>
+                <td class="code-cell">{{ item.codigoProducto }}</td>
+                <td>
+                  <div class="product-name-cell">{{ item.productoNombre }}</div>
+                  <div class="presentation-sub">{{ item.presentacionNombre }}</div>
+                </td>
+                <td class="col-qty quantity-cell">
+                  <strong>{{ item.cantidad }}</strong>
+                  <span class="unit-sub">{{ item.unidadBase }}</span>
+                </td>
+                <td class="location-cell">
+                  @if (item.ubicacion) {
+                    <span class="location-badge">
+                      <app-icon name="place"></app-icon>
+                      {{ item.ubicacion }}
+                    </span>
+                  } @else {
+                    <span class="text-muted">Sin ubicación especificada</span>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <footer class="sheet-footer">
+        <div class="sheet-signatures print-only">
+          <div class="signature-box">
+            <div class="signature-line"></div>
+            <span>Preparado por: {{ sh.despacho.preparadoPor || '_______________________' }}</span>
+          </div>
+          <div class="signature-box">
+            <div class="signature-line"></div>
+            <span>Recibido conforme: {{ sh.despacho.recibeNombre || '_______________________' }}</span>
+          </div>
+        </div>
+        <div class="print-hidden sheet-close-btn-wrap">
+          <button mat-stroked-button type="button" (click)="closeSheet()">Cerrar</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+}
+
+<!-- Modal 2: Marcar como preparado (P30.B2) -->
+@if (prepareTarget(); as target) {
+  <div class="modal-backdrop">
+    <div class="modal-card" appModal [modalLocked]="busy()" (modalClose)="closePrepareModal()" aria-label="Preparar despacho">
+      <header class="modal-header">
+        <h2 id="prepare-modal-title" class="modal-title">Marcar pedido como preparado</h2>
+        <button class="modal-close" type="button" (click)="closePrepareModal()" aria-label="Cerrar">✕</button>
+      </header>
+      <form [formGroup]="prepareForm" (ngSubmit)="submitPrepare()">
+        <div class="modal-body">
+          <p class="modal-intro">
+            ¿Confirmas que los productos de <strong>{{ target.numeroFormateado }}</strong> (Venta: {{ target.comprobante || 'Nota de venta' }}) han sido verificados y embalados en almacén?
+          </p>
+
+          <mat-form-field appearance="outline" class="w-full">
+            <mat-label>Observación de preparación (opcional)</mat-label>
+            <textarea matInput formControlName="observacion" rows="3" placeholder="Ej: Embalado en 2 cajas selladas"></textarea>
+            @if (prepareForm.controls.observacion.hasError('maxlength')) {
+              <mat-error>Máximo 300 caracteres</mat-error>
+            }
+          </mat-form-field>
+        </div>
+        <footer class="modal-actions">
+          <button mat-stroked-button type="button" (click)="closePrepareModal()" [disabled]="busy()">
+            Cancelar
+          </button>
+          <button mat-flat-button color="primary" type="submit" [disabled]="busy() || prepareForm.invalid">
+            Confirmar preparación
+          </button>
+        </footer>
+      </form>
+    </div>
+  </div>
+}
+
+<!-- Modal 3: Confirmar entrega (P30.B3) -->
+@if (deliverTarget(); as target) {
+  <div class="modal-backdrop">
+    <div class="modal-card" appModal [modalLocked]="busy()" (modalClose)="closeDeliverModal()" aria-label="Entregar despacho">
+      <header class="modal-header">
+        <h2 id="deliver-modal-title" class="modal-title">Confirmar entrega de pedido</h2>
+        <button class="modal-close" type="button" (click)="closeDeliverModal()" aria-label="Cerrar">✕</button>
+      </header>
+      <form [formGroup]="deliverForm" (ngSubmit)="submitDeliver()">
+        <div class="modal-body">
+          <p class="modal-intro">
+            Se registrará la salida y entrega final del pedido <strong>{{ target.numeroFormateado }}</strong> para el cliente <strong>{{ target.clienteNombre }}</strong>.
+          </p>
+
+          <mat-form-field appearance="outline" class="w-full">
+            <mat-label>Nombre de quien retira (opcional)</mat-label>
+            <input matInput formControlName="recibe" placeholder="Ej: Juan Pérez (Titular / Chofer / Encargado)">
+            @if (deliverForm.controls.recibe.hasError('maxlength')) {
+              <mat-error>Máximo 100 caracteres</mat-error>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="w-full">
+            <mat-label>Observación de entrega (opcional)</mat-label>
+            <textarea matInput formControlName="observacion" rows="3" placeholder="Ej: Retirado en camioneta placa ABC-123"></textarea>
+            @if (deliverForm.controls.observacion.hasError('maxlength')) {
+              <mat-error>Máximo 300 caracteres</mat-error>
+            }
+          </mat-form-field>
+        </div>
+        <footer class="modal-actions">
+          <button mat-stroked-button type="button" (click)="closeDeliverModal()" [disabled]="busy()">
+            Cancelar
+          </button>
+          <button mat-flat-button class="btn-deliver" type="submit" [disabled]="busy() || deliverForm.invalid">
+            Confirmar entrega
+          </button>
+        </footer>
+      </form>
+    </div>
+  </div>
+}

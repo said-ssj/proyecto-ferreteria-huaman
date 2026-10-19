@@ -1,0 +1,6 @@
+package com.ferreteriahuaman.service;
+import com.ferreteriahuaman.repository.*;import com.ferreteriahuaman.security.AuthFailure;import com.fasterxml.jackson.databind.ObjectMapper;import java.time.LocalDate;import org.junit.jupiter.api.Test;import static org.mockito.Mockito.*;import static org.assertj.core.api.Assertions.*;
+class SaleHistoryServiceTest {SaleRepository repo=mock(SaleRepository.class);SaleHistoryService service=new SaleHistoryService(repo,mock(CashRepository.class),mock(BusinessTransactions.class),mock(AuthStore.class),new ObjectMapper());
+ @Test void invalidFiltersDoNotQueryDatabase(){assertThatThrownBy(()->service.list("",LocalDate.of(2026,2,1),LocalDate.of(2026,1,1),"","",null,0,20)).isInstanceOf(AuthFailure.class);assertThatThrownBy(()->service.list("",null,null,"X","",null,0,20)).isInstanceOf(AuthFailure.class);assertThatThrownBy(()->service.list("",null,null,"","BORRADOR",null,0,20)).isInstanceOf(AuthFailure.class);verifyNoInteractions(repo);}
+ @Test void invalidPageOrSellerDoesNotQueryDatabase(){assertThatThrownBy(()->service.list("",null,null,"","",-1L,0,20)).isInstanceOf(AuthFailure.class);assertThatThrownBy(()->service.list("",null,null,"","",null,-1,20)).isInstanceOf(AuthFailure.class);verifyNoInteractions(repo);}
+}

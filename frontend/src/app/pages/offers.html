@@ -1,0 +1,513 @@
+<div class="offers-page">
+  <!-- Feedback Messages -->
+  @if (error()) {
+    <div class="alert alert-error" role="alert">
+      <app-icon name="error" />
+      <span>{{ error() }}</span>
+      <button type="button" class="btn-icon" (click)="error.set('')" aria-label="Cerrar error">
+        <app-icon name="close" />
+      </button>
+    </div>
+  }
+  @if (success()) {
+    <div class="alert alert-success" role="status">
+      <app-icon name="check_circle" />
+      <span>{{ success() }}</span>
+      <button type="button" class="btn-icon" (click)="success.set('')" aria-label="Cerrar mensaje">
+        <app-icon name="close" />
+      </button>
+    </div>
+  }
+
+  <!-- Header -->
+  <header class="page-header">
+    <div class="header-titles">
+      <h1 class="page-title">{{ mode() === 'new' ? 'Nueva oferta' : 'Ofertas' }}</h1>
+      <p class="page-subtitle">Gestiona precios especiales por presentación y periodos de vigencia.</p>
+    </div>
+    @if (mode() === 'list' && canManage()) {
+      <button type="button" class="btn btn-primary" (click)="openNewOffer()">
+        <app-icon name="add" />
+        <span>Nueva oferta</span>
+      </button>
+    }
+  </header>
+
+  @if (mode() === 'list') {
+    <!-- Summary Metrics -->
+    <section class="summary-cards" aria-label="Resumen de ofertas">
+      <div class="card metric-card">
+        <div class="metric-icon metric-vigente">
+          <app-icon name="sell" />
+        </div>
+        <div class="metric-data">
+          <span class="metric-label">Vigentes</span>
+          <strong class="metric-value">{{ summary().vigentes }}</strong>
+        </div>
+      </div>
+
+      <div class="card metric-card">
+        <div class="metric-icon metric-programada">
+          <app-icon name="schedule" />
+        </div>
+        <div class="metric-data">
+          <span class="metric-label">Programadas</span>
+          <strong class="metric-value">{{ summary().programadas }}</strong>
+        </div>
+      </div>
+
+      <div class="card metric-card">
+        <div class="metric-icon metric-vencida">
+          <app-icon name="event_busy" />
+        </div>
+        <div class="metric-data">
+          <span class="metric-label">Vencidas</span>
+          <strong class="metric-value">{{ summary().vencidas }}</strong>
+        </div>
+      </div>
+
+      <div class="card metric-card">
+        <div class="metric-icon metric-inactiva">
+          <app-icon name="block" />
+        </div>
+        <div class="metric-data">
+          <span class="metric-label">Inactivas</span>
+          <strong class="metric-value">{{ summary().inactivas }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <!-- Filter Tabs & Search -->
+    <div class="table-controls card">
+      <nav class="tabs" aria-label="Filtro por estado de oferta">
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="activeTab() === 'TODAS'"
+          (click)="selectTab('TODAS')">
+          Todas
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="activeTab() === 'VIGENTE'"
+          (click)="selectTab('VIGENTE')">
+          Vigentes
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="activeTab() === 'PROGRAMADA'"
+          (click)="selectTab('PROGRAMADA')">
+          Programadas
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="activeTab() === 'VENCIDA'"
+          (click)="selectTab('VENCIDA')">
+          Vencidas
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="activeTab() === 'INACTIVA'"
+          (click)="selectTab('INACTIVA')">
+          Inactivas
+        </button>
+      </nav>
+
+      <div class="search-bar">
+        <div class="search-input-wrap">
+          <app-icon name="search" class="search-icon" />
+          <input
+            type="text"
+            class="input-search"
+            aria-label="Buscar ofertas por producto, código o nombre" placeholder="Buscar por producto, código o nombre de oferta..."
+            [formControl]="searchControl"
+            (keyup.enter)="searchOffers()" />
+          @if (searchControl.value) {
+            <button type="button" class="btn-clear" (click)="clearSearch()" aria-label="Limpiar búsqueda">
+              <app-icon name="close" />
+            </button>
+          }
+        </div>
+        <button type="button" class="btn btn-secondary" (click)="searchOffers()">
+          <span>Buscar</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Offers Table -->
+    <div class="table-container card">
+      @if (loading()) {
+        <div class="loading-state">
+          <span>Cargando ofertas...</span>
+        </div>
+      } @else if (rows().length === 0) {
+        <app-empty-state
+          title="No se encontraron ofertas"
+          description="No hay ofertas registradas que coincidan con los filtros seleccionados."
+          icon="sell" />
+      } @else {
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Nombre de oferta</th>
+              <th>Producto & Código</th>
+              <th>Presentación</th>
+              <th class="num">Precio regular</th>
+              <th class="num">Precio oferta</th>
+              <th class="num">Descuento</th>
+              <th>Vigencia</th>
+              <th>Estado</th>
+              <th class="actions-col">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of rows(); track row.id) {
+              <tr>
+                <td class="bold">{{ row.nombre }}</td>
+                <td>
+                  <span class="product-name">{{ row.nombreProducto }}</span>
+                  <span class="product-code">{{ row.codigoProducto }}</span>
+                </td>
+                <td>{{ row.presentacionNombre }}</td>
+                <td class="num">S/ {{ row.precioRegular }}</td>
+                <td class="num bold text-primary">S/ {{ row.precioOferta }}</td>
+                <td class="num">
+                  <span class="discount-pill">-{{ row.descuentoPorcentaje }}%</span>
+                </td>
+                <td>
+                  <span class="date-range">{{ row.fechaInicio }} · {{ row.fechaFin }}</span>
+                </td>
+                <td>
+                  <span class="badge" [class]="'badge-' + row.estadoOperativo.toLowerCase()">
+                    {{ row.estadoOperativo }}
+                  </span>
+                </td>
+                <td class="actions-col">
+                  @if (canManage()) {
+                    @if (row.estadoOperativo === 'VIGENTE' || row.estadoOperativo === 'PROGRAMADA') {
+                      <button
+                        type="button"
+                        class="btn-icon"
+                        title="Editar oferta"
+                        (click)="openEdit(row)">
+                        <app-icon name="edit" />
+                      </button>
+                      <button
+                        type="button"
+                        class="btn-icon text-danger"
+                        title="Inactivar oferta"
+                        (click)="openStateModal(row, 'I')">
+                        <app-icon name="block" />
+                      </button>
+                    } @else if (row.estadoOperativo === 'INACTIVA') {
+                      <button
+                        type="button"
+                        class="btn-icon text-success"
+                        title="Reactivar oferta"
+                        (click)="openStateModal(row, 'A')">
+                        <app-icon name="check_circle" />
+                      </button>
+                    } @else {
+                      <span class="text-muted text-sm">Vencida</span>
+                    }
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+  } @else {
+    <!-- NEW OFFER MODE -->
+    <div class="new-offer-view card">
+      <div class="view-header">
+        <button type="button" class="btn btn-secondary" (click)="cancelNewOffer()">
+          <app-icon name="arrow_back" />
+          <span>Volver al listado</span>
+        </button>
+        <h2 class="section-title">Registro de nueva oferta</h2>
+      </div>
+
+      <div class="new-offer-grid">
+        <!-- Step 1: Select Product & Presentation -->
+        <div class="step-card">
+          <h3 class="step-title">1. Seleccionar producto y presentación</h3>
+          <div class="search-bar mini-search">
+            <input
+              type="text"
+              class="input-search"
+              aria-label="Buscar producto o código para la oferta" placeholder="Buscar producto o código..."
+              [formControl]="productSearchControl"
+              (keyup.enter)="searchProducts()" />
+            <button type="button" class="btn btn-secondary" (click)="searchProducts()">
+              Buscar
+            </button>
+          </div>
+
+          <div class="products-picker-list">
+            @if (searchingProducts()) {
+              <div class="loading-state">Buscando productos disponibles...</div>
+            } @else if (availableProducts().length === 0) {
+              <div class="empty-hint">No hay productos disponibles para venta con ese criterio.</div>
+            } @else {
+              @for (opt of availableProducts(); track opt.presentacionId) {
+                <div
+                  class="product-picker-item"
+                  [class.selected]="selectedProduct()?.presentacionId === opt.presentacionId"
+                  (click)="selectProduct(opt)">
+                  <div class="picker-item-main">
+                    <strong class="item-name">{{ opt.nombreProducto }}</strong>
+                    <span class="item-pres">{{ opt.presentacionNombre }} ({{ opt.unidadBase }})</span>
+                  </div>
+                  <div class="picker-item-prices">
+                    <span class="item-code">{{ opt.codigoProducto }}</span>
+                    <span class="item-price">Regular: S/ {{ opt.precioRegular }}</span>
+                  </div>
+                </div>
+              }
+            }
+          </div>
+        </div>
+
+        <!-- Step 2: Form & Pricing Details -->
+        <div class="step-card">
+          <h3 class="step-title">2. Condiciones de la oferta</h3>
+          @if (!selectedProduct()) {
+            <div class="empty-hint">Selecciona primero un producto en el paso 1 para configurar la oferta.</div>
+          } @else {
+            <div class="selected-summary-box">
+              <span class="box-label">Producto seleccionado:</span>
+              <strong class="box-title">{{ selectedProduct()?.nombreProducto }}</strong>
+              <div class="box-row">
+                <span>Presentación: {{ selectedProduct()?.presentacionNombre }}</span>
+                <span>Precio regular: S/ {{ selectedProduct()?.precioRegular }}</span>
+              </div>
+            </div>
+
+            <form [formGroup]="newOfferForm" class="offer-form" (ngSubmit)="submitNewOffer()">
+              <div class="form-field">
+                <label for="new-nombre">Nombre de la oferta *</label>
+                <input
+                  id="new-nombre"
+                  type="text"
+                  class="input-text"
+                  maxlength="80"
+                  formControlName="nombre" />
+              </div>
+
+              <div class="form-row">
+                <div class="form-field">
+                  <label for="new-precio">Precio de oferta (S/) *</label>
+                  <input
+                    id="new-precio"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    class="input-text"
+                    formControlName="precioOferta" />
+                </div>
+                <div class="form-field discount-preview">
+                  <label>Descuento estimado</label>
+                  <div class="preview-box">
+                    @if (newCalculatedDiscount() !== null) {
+                      @if (newCalculatedDiscount()! > 0) {
+                        <span class="discount-badge">-{{ newCalculatedDiscount() }}%</span>
+                      } @else {
+                        <span class="text-danger">Debe ser menor a S/ {{ selectedProduct()?.precioRegular }}</span>
+                      }
+                    } @else {
+                      <span class="text-muted">--</span>
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-field">
+                  <label for="new-inicio">Fecha de inicio *</label>
+                  <input
+                    id="new-inicio"
+                    type="date"
+                    class="input-text"
+                    formControlName="fechaInicio" />
+                </div>
+                <div class="form-field">
+                  <label for="new-fin">Fecha de fin *</label>
+                  <input
+                    id="new-fin"
+                    type="date"
+                    class="input-text"
+                    formControlName="fechaFin" />
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button type="button" class="btn btn-secondary" (click)="cancelNewOffer()">
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  class="btn btn-primary"
+                  [disabled]="newOfferForm.invalid || busy() || (newCalculatedDiscount() || 0) <= 0">
+                  <app-icon name="save" />
+                  <span>{{ busy() ? 'Guardando...' : 'Guardar oferta' }}</span>
+                </button>
+              </div>
+            </form>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- EDIT MODAL -->
+  @if (editingTarget()) {
+    <div class="modal-backdrop" (click)="closeEdit()">
+      <div class="modal-card" appModal [modalLocked]="busy()" (modalClose)="closeEdit()" aria-label="Editar oferta" (click)="$event.stopPropagation()">
+        <header class="modal-header">
+          <h2 class="modal-title">Editar oferta</h2>
+          <button type="button" class="btn-icon" (click)="closeEdit()" aria-label="Cerrar modal">
+            <app-icon name="close" />
+          </button>
+        </header>
+
+        <div class="modal-body">
+          <div class="info-banner">
+            <div>
+              <strong>{{ editingTarget()?.nombreProducto }}</strong> ({{ editingTarget()?.presentacionNombre }})
+            </div>
+            <div class="text-sm">Precio regular: S/ {{ editingTarget()?.precioRegular }}</div>
+          </div>
+
+          <form [formGroup]="editOfferForm" class="offer-form" (ngSubmit)="submitEdit()">
+            <div class="form-field">
+              <label for="edit-nombre">Nombre de la oferta *</label>
+              <input
+                id="edit-nombre"
+                type="text"
+                class="input-text"
+                maxlength="80"
+                formControlName="nombre" />
+            </div>
+
+            <div class="form-row">
+              <div class="form-field">
+                <label for="edit-precio">Precio de oferta (S/) *</label>
+                <input
+                  id="edit-precio"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  class="input-text"
+                  formControlName="precioOferta" />
+              </div>
+              <div class="form-field discount-preview">
+                <label>Descuento estimado</label>
+                <div class="preview-box">
+                  @if (editCalculatedDiscount() !== null) {
+                    @if (editCalculatedDiscount()! > 0) {
+                      <span class="discount-badge">-{{ editCalculatedDiscount() }}%</span>
+                    } @else {
+                      <span class="text-danger">Debe ser menor a regular</span>
+                    }
+                  } @else {
+                    <span class="text-muted">--</span>
+                  }
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-field">
+                <label for="edit-inicio">Fecha de inicio</label>
+                <input
+                  id="edit-inicio"
+                  type="date"
+                  class="input-text"
+                  [disabled]="editingTarget()?.estadoOperativo === 'VIGENTE'"
+                  formControlName="fechaInicio" />
+                @if (editingTarget()?.estadoOperativo === 'VIGENTE') {
+                  <span class="hint-text">Oferta vigente: la fecha de inicio no se modifica.</span>
+                }
+              </div>
+              <div class="form-field">
+                <label for="edit-fin">Fecha de fin *</label>
+                <input
+                  id="edit-fin"
+                  type="date"
+                  class="input-text"
+                  formControlName="fechaFin" />
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" (click)="closeEdit()">
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                class="btn btn-primary"
+                [disabled]="editOfferForm.invalid || busy() || (editCalculatedDiscount() || 0) <= 0">
+                <app-icon name="save" />
+                <span>{{ busy() ? 'Guardando...' : 'Actualizar oferta' }}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- STATE CHANGE CONFIRM MODAL -->
+  @if (stateTarget()) {
+    <div class="modal-backdrop" (click)="closeStateModal()">
+      <div class="modal-card modal-confirm" appModal [modalLocked]="busy()" (modalClose)="closeStateModal()" aria-label="Estado de oferta" (click)="$event.stopPropagation()">
+        <header class="modal-header">
+          <h2 class="modal-title">
+            {{ stateTarget()?.nextState === 'I' ? 'Inactivar oferta' : 'Reactivar oferta' }}
+          </h2>
+          <button type="button" class="btn-icon" (click)="closeStateModal()" aria-label="Cerrar modal">
+            <app-icon name="close" />
+          </button>
+        </header>
+
+        <div class="modal-body">
+          <p>
+            ¿Estás seguro de que deseas
+            <strong>{{ stateTarget()?.nextState === 'I' ? 'inactivar' : 'reactivar' }}</strong>
+            la oferta <strong>"{{ stateTarget()?.row?.nombre }}"</strong>?
+          </p>
+          @if (stateTarget()?.nextState === 'I') {
+            <p class="text-sm text-muted">
+              Al inactivar la oferta, dejará de aplicarse de inmediato en ventas y cotizaciones.
+            </p>
+          } @else {
+            <p class="text-sm text-muted">
+              La oferta volverá a estar disponible hasta su fecha de fin ({{ stateTarget()?.row?.fechaFin }}).
+            </p>
+          }
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="closeStateModal()">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            class="btn"
+            [class.btn-danger]="stateTarget()?.nextState === 'I'"
+            [class.btn-primary]="stateTarget()?.nextState === 'A'"
+            [disabled]="busy()"
+            (click)="confirmStateChange()">
+            <span>{{ busy() ? 'Procesando...' : (stateTarget()?.nextState === 'I' ? 'Inactivar' : 'Reactivar') }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

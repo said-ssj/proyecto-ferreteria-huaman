@@ -1,0 +1,70 @@
+# Dependencias y resultados de compilación
+**/node_modules/
+**/target/
+**/dist/
+**/build/
+**/out-tsc/
+**/coverage/
+**/.angular/
+**/.cache/
+*.log
+*.tsbuildinfo
+
+# Configuración privada
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+**/secrets/
+**/backups/
+*.dump
+*.backup
+
+# Configuración personal y asistentes de desarrollo
+**/.vscode/
+**/.idea/
+**/.agents/
+**/.agent/
+**/.codex/
+**/.claude/
+**/.gemini/
+**/.antigravity/
+**/.opencode/
+**/.cursor/
+**/.github/modernize/
+**/AGENTS.md
+**/CLAUDE.md
+**/GEMINI.md
+**/mcp.json
+**/mcp_config.json
+**/.mcp.json
+
+# Seguimiento local y evidencias internas
+/ESTADO_DEL_PROYECTO.md
+/backend/docs/
+/frontend/docs/
+/work/
+/outputs/
+/platform/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.tmp
+*.bak
+
+# Otras instrucciones locales de asistentes
+**/.continue/
+**/.windsurf/
+**/.aider*
+**/.cursorrules
+**/.cursorignore
+**/.github/copilot-instructions.md
+**/.github/instructions/
+**/*.instructions.md
