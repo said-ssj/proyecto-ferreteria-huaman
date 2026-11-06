@@ -1,0 +1,7 @@
+**
+!Dockerfile
+!pom.xml
+!src/
+!src/**
+!certs/
+!certs/prod-ca-2021.crt
