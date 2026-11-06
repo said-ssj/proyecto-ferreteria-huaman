@@ -3,7 +3,11 @@ import {HttpClient,HttpErrorResponse,HttpInterceptorFn} from '@angular/common/ht
 import {Injectable,InjectionToken,computed,inject,signal,DestroyRef} from '@angular/core';
 import {Router,CanActivateFn,CanActivateChildFn} from '@angular/router';
 import {catchError,finalize,tap,throwError} from 'rxjs';
-export const API_BASE_URL=new InjectionToken<string>('API_BASE_URL',{providedIn:'root',factory:()=>'/api'});
+declare const __DEPLOY_API_ORIGIN__: string;
+export const API_BASE_URL = new InjectionToken<string>('API_BASE_URL', {
+ providedIn: 'root',
+ factory: () => (typeof __DEPLOY_API_ORIGIN__ === 'undefined' ? '' : __DEPLOY_API_ORIGIN__) + '/api',
+});
 export interface UserProfile {id:number;usuario:string;nombres:string;apellidos:string;rol:string;cambioClaveObligatorio:boolean;permisos:string[];expiraEn:string;}
 export interface LoginResponse {accessToken:string;tokenType:string;usuario:UserProfile;}
 const ROUTE_PERMISSIONS:Record<string,string[]>={

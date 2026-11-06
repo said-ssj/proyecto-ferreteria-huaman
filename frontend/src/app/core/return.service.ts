@@ -1,4 +1,5 @@
-import {Injectable} from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { API_BASE_URL } from './auth.service';
 import {HttpClient, HttpParams} from '@angular/common/http';
 import {Observable} from 'rxjs';
 
@@ -147,7 +148,7 @@ export interface Page<T> {
   providedIn: 'root'
 })
 export class ReturnService {
-  private readonly baseUrl = '/api/devoluciones';
+  private readonly baseUrl = inject(API_BASE_URL) + '/devoluciones';
 
   constructor(private http: HttpClient) {}
 
