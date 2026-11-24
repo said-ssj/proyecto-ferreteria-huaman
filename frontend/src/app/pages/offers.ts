@@ -3,10 +3,7 @@ import {Component, DestroyRef, computed, inject, signal} from '@angular/core';
 import {takeUntilDestroyed, toSignal} from '@angular/core/rxjs-interop';
 import {FormControl, FormGroup, ReactiveFormsModule, Validators} from '@angular/forms';
 import {ActivatedRoute, Router} from '@angular/router';
-import {MatButtonModule} from '@angular/material/button';
-import {MatFormFieldModule} from '@angular/material/form-field';
-import {MatInputModule} from '@angular/material/input';
-import {finalize} from 'rxjs';
+import {finalize, Subscription} from 'rxjs';
 import {AuthService, authError} from '../core/auth.service';
 import {
   OfferCreateRequest,
@@ -25,9 +22,6 @@ import {Icon} from '../shared/icon';
   imports: [
     Modal,
     ReactiveFormsModule,
-    MatButtonModule,
-    MatFormFieldModule,
-    MatInputModule,
     EmptyState,
     Icon
   ],
@@ -44,6 +38,8 @@ export class Offers {
   readonly isAdmin = computed(() => this.auth.user()?.rol === 'ADM');
   readonly canManage = computed(() => this.auth.has('COC.OFERTAS'));
 
+  private offersRequest?: Subscription;
+  private productsRequest?: Subscription;
   readonly mode = signal<'list' | 'new'>('list');
 
   // Summary
@@ -122,21 +118,21 @@ export class Offers {
     // Check initial route mode
     const routeMode = this.route.snapshot.data['offerMode'];
     if (routeMode === 'new') {
-      this.mode.set('new');
+      this.openNewOffer();
+    } else {
+      this.loadSummary();
+      this.loadOffers();
     }
-
-    this.loadSummary();
-    this.loadOffers();
   }
 
   todayString(): string {
-    const d = new Date();
-    return d.toISOString().split('T')[0];
+    const parts = new Intl.DateTimeFormat('en-CA', {timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+    return ['year','month','day'].map(type=>parts.find(p=>p.type===type)!.value).join('-');
   }
 
   plusDaysString(days: number): string {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
+    const d = new Date(this.todayString()+'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + days);
     return d.toISOString().split('T')[0];
   }
 
@@ -159,12 +155,13 @@ export class Offers {
   }
 
   loadOffers() {
+    this.offersRequest?.unsubscribe();
     this.loading.set(true);
     this.error.set('');
     const estado = this.activeTab() === 'TODAS' ? '' : this.activeTab();
     const buscar = this.searchControl.value.trim();
 
-    this.api.getOffers({
+    this.offersRequest = this.api.getOffers({
       buscar,
       estado,
       pagina: this.page(),
@@ -177,9 +174,11 @@ export class Offers {
         this.rows.set(res.items);
         this.total.set(res.total);
       },
-      error: err => this.error.set(authError(err))
+      error: err => {this.rows.set([]);this.total.set(0);this.error.set(authError(err));}
     });
   }
+
+  nextPage(delta:number){const next=this.page()+delta;if(this.loading()||next<0||next*this.pageSize>=this.total())return;this.page.set(next);this.loadOffers();}
 
   selectTab(tab: 'TODAS' | 'VIGENTE' | 'PROGRAMADA' | 'VENCIDA' | 'INACTIVA') {
     if (this.activeTab() !== tab) {
@@ -210,6 +209,7 @@ export class Offers {
   }
 
   cancelNewOffer() {
+    if(this.busy())return;
     this.mode.set('list');
     this.selectedProduct.set(null);
     this.newOfferForm.reset();
@@ -220,15 +220,16 @@ export class Offers {
   }
 
   searchProducts() {
+    this.productsRequest?.unsubscribe();
     this.searchingProducts.set(true);
     const q = this.productSearchControl.value.trim();
-    this.api.getAvailableProducts(q)
+    this.productsRequest = this.api.getAvailableProducts(q)
       .pipe(
         takeUntilDestroyed(this.destroy),
         finalize(() => this.searchingProducts.set(false))
       ).subscribe({
         next: list => this.availableProducts.set(list),
-        error: err => this.error.set(authError(err))
+        error: err => {this.availableProducts.set([]);this.error.set(authError(err));}
       });
   }
 
@@ -297,10 +298,13 @@ export class Offers {
   }
 
   openEdit(row: OfferRow) {
+    if(this.busy()||!this.canManage())return;
     if (row.estadoOperativo === 'VENCIDA' || row.estadoOperativo === 'INACTIVA') return;
     this.editingTarget.set(row);
     this.error.set('');
     this.success.set('');
+    if(row.estadoOperativo==='VIGENTE')this.editOfferForm.controls.fechaInicio.disable();
+    else this.editOfferForm.controls.fechaInicio.enable();
     this.editOfferForm.patchValue({
       nombre: row.nombre,
       precioOferta: parseFloat(row.precioOferta),
@@ -369,6 +373,7 @@ export class Offers {
   }
 
   openStateModal(row: OfferRow, nextState: 'A' | 'I') {
+    if(this.busy()||!this.canManage())return;
     this.stateTarget.set({row, nextState});
     this.error.set('');
   }

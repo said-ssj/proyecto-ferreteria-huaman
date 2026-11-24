@@ -3,7 +3,7 @@ import {TestBed} from '@angular/core/testing';
 import {provideRouter} from '@angular/router';
 import {RouterTestingHarness} from '@angular/router/testing';
 import {By} from '@angular/platform-browser';
-import {of,throwError} from 'rxjs';
+import {of,throwError,Subject} from 'rxjs';
 import {routes} from '../app.routes';
 import {AuthService} from '../core/auth.service';
 import {
@@ -13,11 +13,12 @@ import {
   ReturnService,
   ReturnSummary,
   SaleDetailLookup,
-  SaleLookup
+  SaleLookup,Page
 } from '../core/return.service';
 import {Returns} from './returns';
 
 describe('Devoluciones conectadas', () => {
+  let currentHarness:RouterTestingHarness;
   const summary: ReturnSummary = {
     pendientes: 1,
     aprobadasHoy: 2,
@@ -179,7 +180,7 @@ describe('Devoluciones conectadas', () => {
   });
 
   async function createPage(url: string) {
-    const harness = await RouterTestingHarness.create(url);
+    const harness = await RouterTestingHarness.create(url);currentHarness=harness;
     harness.detectChanges();
     await TestBed.inject(ApplicationRef).whenStable();
     harness.detectChanges();
@@ -307,5 +308,39 @@ describe('Devoluciones conectadas', () => {
     p.submitNewReturn();expect(api.solicitarDevolucion).toHaveBeenCalledWith(expect.objectContaining({lineas:[expect.objectContaining({unidades:[{condicion:'TRAMO',cantidad:0.4},{condicion:'TRAMO',cantidad:0.6}]})]}));
     expect(p.selectedSale()).toBeNull();
   });
+
+  it('inicializa ventas y caja al entrar directamente al registro',async()=>{
+    const p=await createPage('/devoluciones/nueva');expect(p.mode()).toBe('new');expect(api.searchSales).toHaveBeenCalled();expect(api.getTodayCash).toHaveBeenCalled();expect(api.getReturns).not.toHaveBeenCalled();
+  });
+  it('conserva filtros aplicados al paginar y limita el último resultado',async()=>{
+    const p=await createPage('/devoluciones');p.searchControl.setValue('B001');p.applyFilters();p.searchControl.setValue('borrador');p.total.set(41);p.nextPage(1);
+    expect(api.getReturns).toHaveBeenLastCalledWith(expect.objectContaining({buscar:'B001',pagina:1}));p.total.set(41);p.nextPage(1);p.total.set(41);api.getReturns.mockClear();p.nextPage(1);expect(api.getReturns).not.toHaveBeenCalled();
+  });
+  it('rechaza filtros con fechas invertidas',async()=>{
+    const p=await createPage('/devoluciones');api.getReturns.mockClear();p.desdeControl.setValue('2026-10-25');p.hastaControl.setValue('2026-10-01');p.applyFilters();expect(api.getReturns).not.toHaveBeenCalled();expect(p.error()).toContain('fechas');
+  });
+  it('no permite autorizar ni rechazar al vendedor o un registro resuelto',async()=>{
+    userProfile.set({id:2,rol:'VEN',permisos:['VEN.DEVOLVER'],cambioClaveObligatorio:false});const p=await createPage('/devoluciones');p.openApprove(sampleRow);p.openReject(sampleRow);expect(p.approveTarget()).toBeNull();expect(p.rejectTarget()).toBeNull();
+    userProfile.set({id:1,rol:'ADM',permisos:['VEN.DEVOLVER'],cambioClaveObligatorio:false});p.openApprove({...sampleRow,estadoDevolucion:'APROBADA'});expect(p.approveTarget()).toBeNull();
+  });
+  it('bloquea el reintegro mientras verifica la caja y exige referencia electrónica',async()=>{
+    const p=await createPage('/devoluciones');const cash=new Subject<CashOption>();api.getTodayCash.mockImplementationOnce(()=>cash);p.openApprove({...sampleRow,formaReintegro:'YAPE'});p.approveForm.controls.referencia.setValue('12345');p.confirmApprove();expect(api.aprobarDevolucion).not.toHaveBeenCalled();
+    cash.next(sampleCash);cash.complete();p.approveForm.controls.referencia.setValue('');p.confirmApprove();expect(p.error()).toContain('referencia');expect(api.aprobarDevolucion).not.toHaveBeenCalled();
+  });
+  it('rechaza cantidades negativas y límites de texto sin solicitar',async()=>{
+    const p=await createPage('/devoluciones/nueva');p.selectSale(10);p.newReturnForm.patchValue({motivo:'Producto con defecto visible',autoAprobar:false});p.lineQuantities.set({101:-1});p.submitNewReturn();expect(api.solicitarDevolucion).not.toHaveBeenCalled();
+    p.lineQuantities.set({101:1});p.newReturnForm.controls.referencia.setValue('x'.repeat(41));p.submitNewReturn();expect(api.solicitarDevolucion).not.toHaveBeenCalled();
+  });
+  it('solo aplica el último detalle de venta solicitado',async()=>{
+    const p=await createPage('/devoluciones/nueva');const a=new Subject<SaleDetailLookup>(),b=new Subject<SaleDetailLookup>();api.getSaleDetail.mockImplementationOnce(()=>a).mockImplementationOnce(()=>b);p.selectSale(10);p.selectSale(11);
+    b.next({...sampleSaleDetail,venta:{...sampleSaleLookup,idVenta:11}});a.next(sampleSaleDetail);expect(p.selectedSale()?.venta.idVenta).toBe(11);b.complete();
+  });
+  it('cancela la selección de una venta al volver al listado',async()=>{
+    const p=await createPage('/devoluciones/nueva');const late=new Subject<SaleDetailLookup>();api.getSaleDetail.mockImplementationOnce(()=>late);p.selectSale(10);p.setMode('list');late.next(sampleSaleDetail);expect(p.selectedSale()).toBeNull();
+  });
+  it('muestra el error de resumen sin inventar contadores en cero',async()=>{
+    api.getSummary.mockImplementationOnce(()=>throwError(()=>({status:503})));const p=await createPage('/devoluciones');expect(p.summaryReady()).toBe(false);expect(p.summaryError()).toContain('No se pudo');expect(currentHarness.routeNativeElement?.textContent).toContain('—');
+  });
+
 
 });

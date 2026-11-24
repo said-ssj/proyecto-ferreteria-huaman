@@ -1,7 +1,7 @@
 <div class="offers-page">
   <!-- Feedback Messages -->
-  @if (error()) {
-    <div class="alert alert-error" role="alert">
+  @if (error() && !editingTarget() && !stateTarget()) {
+    <div class="notice danger" role="alert">
       <app-icon name="error" />
       <span>{{ error() }}</span>
       <button type="button" class="btn-icon" (click)="error.set('')" aria-label="Cerrar error">
@@ -10,7 +10,7 @@
     </div>
   }
   @if (success()) {
-    <div class="alert alert-success" role="status">
+    <div class="notice success" role="status">
       <app-icon name="check_circle" />
       <span>{{ success() }}</span>
       <button type="button" class="btn-icon" (click)="success.set('')" aria-label="Cerrar mensaje">
@@ -83,35 +83,35 @@
         <button
           type="button"
           class="tab-btn"
-          [class.active]="activeTab() === 'TODAS'"
+          [class.active]="activeTab() === 'TODAS'" [attr.aria-pressed]="activeTab() === 'TODAS'"
           (click)="selectTab('TODAS')">
           Todas
         </button>
         <button
           type="button"
           class="tab-btn"
-          [class.active]="activeTab() === 'VIGENTE'"
+          [class.active]="activeTab() === 'VIGENTE'" [attr.aria-pressed]="activeTab() === 'VIGENTE'"
           (click)="selectTab('VIGENTE')">
           Vigentes
         </button>
         <button
           type="button"
           class="tab-btn"
-          [class.active]="activeTab() === 'PROGRAMADA'"
+          [class.active]="activeTab() === 'PROGRAMADA'" [attr.aria-pressed]="activeTab() === 'PROGRAMADA'"
           (click)="selectTab('PROGRAMADA')">
           Programadas
         </button>
         <button
           type="button"
           class="tab-btn"
-          [class.active]="activeTab() === 'VENCIDA'"
+          [class.active]="activeTab() === 'VENCIDA'" [attr.aria-pressed]="activeTab() === 'VENCIDA'"
           (click)="selectTab('VENCIDA')">
           Vencidas
         </button>
         <button
           type="button"
           class="tab-btn"
-          [class.active]="activeTab() === 'INACTIVA'"
+          [class.active]="activeTab() === 'INACTIVA'" [attr.aria-pressed]="activeTab() === 'INACTIVA'"
           (click)="selectTab('INACTIVA')">
           Inactivas
         </button>
@@ -150,7 +150,7 @@
           description="No hay ofertas registradas que coincidan con los filtros seleccionados."
           icon="sell" />
       } @else {
-        <table class="data-table">
+        <table class="data-table" aria-label="Ofertas por producto y presentación">
           <thead>
             <tr>
               <th>Nombre de oferta</th>
@@ -222,6 +222,11 @@
         </table>
       }
     </div>
+    <div class="form-actions" aria-label="Paginación de ofertas">
+      <span>{{total()}} ofertas · Página {{page()+1}}</span>
+      <button type="button" class="btn btn-secondary" [disabled]="loading()||page()===0" (click)="nextPage(-1)">Anterior</button>
+      <button type="button" class="btn btn-secondary" [disabled]="loading()||(page()+1)*pageSize>=total()" (click)="nextPage(1)">Siguiente</button>
+    </div>
   } @else {
     <!-- NEW OFFER MODE -->
     <div class="new-offer-view card">
@@ -256,9 +261,9 @@
               <div class="empty-hint">No hay productos disponibles para venta con ese criterio.</div>
             } @else {
               @for (opt of availableProducts(); track opt.presentacionId) {
-                <div
+                <button type="button"
                   class="product-picker-item"
-                  [class.selected]="selectedProduct()?.presentacionId === opt.presentacionId"
+                  [class.selected]="selectedProduct()?.presentacionId === opt.presentacionId" [attr.aria-pressed]="selectedProduct()?.presentacionId === opt.presentacionId"
                   (click)="selectProduct(opt)">
                   <div class="picker-item-main">
                     <strong class="item-name">{{ opt.nombreProducto }}</strong>
@@ -268,7 +273,7 @@
                     <span class="item-code">{{ opt.codigoProducto }}</span>
                     <span class="item-price">Regular: S/ {{ opt.precioRegular }}</span>
                   </div>
-                </div>
+                </button>
               }
             }
           </div>
@@ -334,7 +339,7 @@
                     id="new-inicio"
                     type="date"
                     class="input-text"
-                    formControlName="fechaInicio" />
+                    formControlName="fechaInicio" [min]="todayString()" />
                 </div>
                 <div class="form-field">
                   <label for="new-fin">Fecha de fin *</label>
@@ -342,7 +347,7 @@
                     id="new-fin"
                     type="date"
                     class="input-text"
-                    formControlName="fechaFin" />
+                    formControlName="fechaFin" [min]="newOfferForm.controls.fechaInicio.value || todayString()" />
                 </div>
               </div>
 
@@ -377,6 +382,7 @@
         </header>
 
         <div class="modal-body">
+          @if(error()){<p class="notice danger" role="alert">{{error()}}</p>}
           <div class="info-banner">
             <div>
               <strong>{{ editingTarget()?.nombreProducto }}</strong> ({{ editingTarget()?.presentacionNombre }})
@@ -429,7 +435,7 @@
                   id="edit-inicio"
                   type="date"
                   class="input-text"
-                  [disabled]="editingTarget()?.estadoOperativo === 'VIGENTE'"
+                  
                   formControlName="fechaInicio" />
                 @if (editingTarget()?.estadoOperativo === 'VIGENTE') {
                   <span class="hint-text">Oferta vigente: la fecha de inicio no se modifica.</span>
@@ -477,6 +483,7 @@
         </header>
 
         <div class="modal-body">
+          @if(error()){<p class="notice danger" role="alert">{{error()}}</p>}
           <p>
             ¿Estás seguro de que deseas
             <strong>{{ stateTarget()?.nextState === 'I' ? 'inactivar' : 'reactivar' }}</strong>

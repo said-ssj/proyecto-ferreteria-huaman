@@ -3,7 +3,12 @@ import java.math.BigDecimal;import java.time.LocalDateTime;import java.util.*;im
 public final class SaleModels {
  private SaleModels(){}
  public record Line(@Positive long presentacionId,@NotNull @DecimalMin(value="0",inclusive=false) @Digits(integer=12,fraction=6) BigDecimal cantidad,@Min(1) @Max(1000) int piezas){}
- public record Create(@Positive Long clienteId,@NotBlank @Pattern(regexp="B|F|N") String tipo,boolean entregaInmediata,@NotNull UUID clave,@NotEmpty @Size(max=100) List<@Valid Line> lineas){}
+ public record FiscalData(@Size(max=40) String estadoTributario,@Size(max=40) String condicion,@Pattern(regexp="[0-9]{6}") String ubigeo,@Size(max=100) String departamento,@Size(max=100) String provincia,@Size(max=100) String distrito){}
+ public record ClientCandidate(@NotBlank @Pattern(regexp="DNI|RUC") String tipoDocumento,@NotBlank @Pattern(regexp="(?!0+$)([0-9]{8}|[0-9]{11})") String documento,@NotBlank @Size(min=3,max=150) String nombre,@Size(max=20) String telefono,@Email @Size(max=100) String correo,@Size(max=200) String direccion,@Valid FiscalData datosIdentificacion){}
+ public record ClientLookup(Long id,String tipoDocumento,String documento,String nombre,String telefono,String correo,String direccion,String origen,FiscalData datosIdentificacion){}
+ public record Create(@Positive Long clienteId,@NotBlank @Pattern(regexp="B|F|N") String tipo,boolean entregaInmediata,@NotNull UUID clave,@NotEmpty @Size(max=100) List<@Valid Line> lineas,@Valid ClientCandidate clienteNuevo){
+  public Create(Long clienteId,String tipo,boolean entregaInmediata,UUID clave,List<Line> lineas){this(clienteId,tipo,entregaInmediata,clave,lineas,null);}
+ }
  public record Payment(@NotBlank @Pattern(regexp="EFECTIVO|YAPE|DEBITO|CREDITO") String medio,@NotNull @DecimalMin(value="0",inclusive=false) @Digits(integer=16,fraction=2) BigDecimal monto,@DecimalMin("0") @Digits(integer=16,fraction=2) BigDecimal recibido,@Size(max=40) String operacion,@Size(max=30) String marca,@Pattern(regexp="[0-9]{4}") String ultimosCuatro){}
  public record Assignment(@Positive long lineaId,@Positive long unidadId,@Min(1) @Max(1000) int pieza,@NotNull @DecimalMin(value="0",inclusive=false) @Digits(integer=12,fraction=6) BigDecimal cantidad){}
  public record Confirm(@Positive long serieId,@NotNull LocalDateTime version,@NotEmpty @Size(max=4) List<@Valid Payment> pagos,@NotNull @Size(max=1000) List<@Valid Assignment> asignaciones){}

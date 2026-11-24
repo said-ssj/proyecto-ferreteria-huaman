@@ -4,6 +4,7 @@ import com.ferreteriahuaman.security.AuthModels.*;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,8 +27,10 @@ public class JdbcAuthStore implements AuthStore {
             r.getBoolean("clave_temporal"),r.getInt("intentos_fallidos"),r.getObject("bloqueado_hasta",LocalDateTime.class));
     }
     private <T> Optional<T> first(String sql,RowMapper<T> mapper,Object...args){return jdbc.query(sql,mapper,args).stream().findFirst();}
-    public Optional<Account> lockUsername(String username){return first(ACCOUNT+" where lower(u.username)=lower(?) for update of u",this::account,username);}
-    public Optional<Account> lockUser(long id){return first(ACCOUNT+" where u.id_usuario=? for update of u",this::account,id);}
+    // Serialize authentication/account changes without blocking FK KEY SHARE checks
+    // on users referenced by another operator's sale, return or audit record.
+    public Optional<Account> lockUsername(String username){return first(ACCOUNT+" where lower(u.username)=lower(?) for no key update of u",this::account,username);}
+    public Optional<Account> lockUser(long id){return first(ACCOUNT+" where u.id_usuario=? for no key update of u",this::account,id);}
     public Optional<Long> sessionOwner(UUID token){return first("select id_usuario from huaman.sesion_usuario where token_id=?",(r,n)->r.getLong(1),token);}
     public Optional<Session> lockSession(UUID token){return first("""
         select id_sesion,id_usuario,token_id,ultima_actividad,(estado='A' and cerrada_en is null) abierta
@@ -46,8 +49,8 @@ public class JdbcAuthStore implements AuthStore {
     public void context(String actor,String equipo){jdbc.queryForMap("select set_config('app.usuario',?,true),set_config('app.equipo',?,true)",actor,equipo);}
     public void failed(Account u,int count,LocalDateTime blocked){jdbc.update("update huaman.usuario set intentos_fallidos=?,bloqueado_hasta=? where id_usuario=?",count,blocked,u.id());}
     public void resetLogin(Account u,LocalDateTime now){jdbc.update("update huaman.usuario set intentos_fallidos=0,bloqueado_hasta=null,ultimo_ingreso=? where id_usuario=?",now,u.id());}
-    public void createSession(long user,UUID token,LocalDateTime now){jdbc.update("insert into huaman.sesion_usuario(id_usuario,token_id,inicio,ultima_actividad) values(?,?,?,?)",user,token,now,now);}
-    public void touch(long id,LocalDateTime now){jdbc.update("update huaman.sesion_usuario set ultima_actividad=? where id_sesion=?",now,id);}
+    public void createSession(long user,UUID token,LocalDateTime now){now=now.truncatedTo(ChronoUnit.MICROS);jdbc.update("insert into huaman.sesion_usuario(id_usuario,token_id,inicio,ultima_actividad) values(?,?,?,?)",user,token,now,now);}
+    public void touch(long id,LocalDateTime now){now=now.truncatedTo(ChronoUnit.MICROS);jdbc.update("update huaman.sesion_usuario set ultima_actividad=? where id_sesion=?",now,id);}
     public void close(long id,String reason,LocalDateTime now){jdbc.update("update huaman.sesion_usuario set cerrada_en=?,motivo_cierre=?,estado='I' where id_sesion=?",now,reason,id);}
     public void password(long id,String hash){jdbc.update("update huaman.usuario set clave_hash=?,clave_temporal=false where id_usuario=?",hash,id);}
     public void revokeOtherSessions(long user,UUID except,LocalDateTime now){jdbc.update("update huaman.sesion_usuario set cerrada_en=?,motivo_cierre='REVOCADA',estado='I' where id_usuario=? and token_id<>? and cerrada_en is null and estado='A'",now,user,except);}

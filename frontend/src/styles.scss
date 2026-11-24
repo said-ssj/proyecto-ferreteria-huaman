@@ -11,6 +11,57 @@ html{@include mat.theme((color:mat.$azure-palette,typography:Jakarta,density:0))
 [data-theme="lectura-calida"]{--primary:#7A4F1D;--primary-soft:#EFE3D3;--page:#F6EFE6;--surface:#FAF6F0;--ink:#231A12;--muted:#5C4E42;--control:#8C7764;--focus:#005C8A;--surface-alt:#EFE3D3;--primary-hover:#654017;--line:#D1BEAA;--success:#354C30;--success-bg:#EFEBDD;--warning:#654315;--warning-bg:#F4E7D0;--danger:#793832;--danger-bg:#F4E6DC;--info:#365366;--info-bg:#E8EBE6;--disabled:#E8DCCC;--disabled-ink:#5C4E42;--placeholder:#5C4E42;--button-ink:#FAF6F0;--palette-control:#8C7764;color-scheme:light;}
 [data-theme="noche-suave"]{--primary:#5E9ED6;--primary-soft:#2D3748;--page:#1A202C;--surface:#222B38;--ink:#E2E8F0;--muted:#A0AEC0;--control:#7D8EA3;--focus:#F6AD55;--surface-alt:#2D3748;--primary-hover:#73AFE2;--line:#4A5568;--success:#B9D9C4;--success-bg:#273D33;--warning:#F6D28F;--warning-bg:#443A29;--danger:#E9B8B8;--danger-bg:#442D34;--info:#C2DCEC;--info-bg:#293B4D;--disabled:#364152;--disabled-ink:#A0AEC0;--placeholder:#A0AEC0;--button-ink:#222B38;--palette-control:#4A5568;color-scheme:dark;}
 
+[data-theme="verde-esmeralda"] {
+ --primary:#047857; --primary-hover:#065F46; --primary-soft:#B4E5CD; --accent:#FBBF24;
+ --page:#ECFDF5; --surface:#DDF2E8; --surface-alt:#C1E5D3;
+ --sidebar-surface:#047857; --header-surface:#FFFFFF; --metric-surface:#C7EBDD;
+ --ink:#064E3B; --muted:#3F6356; --control:#507C68; --line:#B6D7C6; --focus:#047857;
+ --button-ink:#FFFFFF; --disabled:#DFEDE6; --disabled-ink:#48675B;
+ --placeholder:#3F6356; --palette-control:#507C68; color-scheme:light;
+}
+
+[data-theme="azul-electrico"] {
+ --primary:#1D4ED8; --primary-hover:#1E40AF; --primary-soft:#BAD4FB; --accent:#F59E0B;
+ --page:#EFF6FF; --surface:#DFEAFC; --surface-alt:#C9DCF8;
+ --sidebar-surface:#D6E4FB; --header-surface:#FFFFFF; --metric-surface:#CFDFFB;
+ --ink:#172554; --muted:#435474; --control:#607598; --line:#C5D5EC; --focus:#1D4ED8;
+ --button-ink:#FFFFFF; --disabled:#E2EAF6; --disabled-ink:#4B5A74;
+ --placeholder:#435474; --palette-control:#607598; color-scheme:light;
+}
+
+:is([data-theme="verde-esmeralda"],[data-theme="azul-electrico"]) {
+ .sidebar { background:var(--sidebar-surface); }
+ .topbar { background:var(--header-surface); }
+ .metric.panel { background:var(--metric-surface); }
+ .page-heading .eyebrow {
+  display:inline-block;
+  padding:4px 8px;
+  border-inline-start:3px solid var(--accent);
+  background:color-mix(in srgb, var(--accent) 24%, var(--surface));
+  color:var(--ink);
+ }
+}
+
+[data-theme="verde-esmeralda"] .sidebar {
+ --focus:#FFFFFF;
+ border-inline-end-color:#065F46;
+ color:#FFFFFF;
+
+ .brand, .nav-group a, .session-link, .close-menu { color:#FFFFFF; }
+ .brand-mark { background:#ECFDF5; color:#064E3B; }
+ nav { scrollbar-color:#A7F3D0 #065F46; }
+ .nav-group a:hover, .session-link:hover:not(:disabled), .close-menu:hover {
+  background:#065F46;
+ }
+ .nav-group a.active {
+  background:#064E3B;
+  color:#FFFFFF;
+  box-shadow:inset 3px 0 var(--accent);
+ }
+ .session-link { border-block-start:1px solid #A7F3D0; }
+ .close-menu { border-color:#A7F3D0; }
+}
+
 body[data-theme]{background:var(--page);color:var(--ink)}
 body[data-theme] .icon{color:inherit}
 body[data-theme] .btn.primary{color:var(--button-ink)}
@@ -129,8 +180,8 @@ app-field{display:block;min-width:0}
 
 .table-actions,.catalog-pagination>div,.record-state{display:flex;align-items:center;gap:10px}
 .table-actions{flex-wrap:nowrap}.table-actions>.mat-mdc-button-base{white-space:nowrap}
-.catalog-pagination{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
-.catalog-loading{padding:0 24px 20px}.record-state{white-space:nowrap}.catalog-pagination>div{flex-wrap:wrap}
+.catalog-pagination{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding-block-start:24px}
+.catalog-loading{padding:0 24px 20px}.record-state{white-space:nowrap}.catalog-pagination>div{flex-wrap:wrap;gap:14px}
 app-catalog .form-actions{padding-bottom:0;margin-top:28px}
 app-catalog>.notice{margin-bottom:24px}
 
@@ -158,3 +209,28 @@ html{--mat-dialog-container-shape:4px}
  app-offers :is(.modal-body,.new-offer-grid) .form-row{grid-template-columns:1fr}
 }
 app-offers .modal-card>.modal-footer{padding:16px 20px;margin-top:0;border-top:1px solid var(--line);background:var(--surface-alt)}
+
+@media print{
+ body:has(.label-sheet) *:not(:has(.label-sheet)):not(.label-sheet):not(.label-sheet *){display:none!important}
+ body:has(.label-sheet) .workspace,body:has(.label-sheet) main,body:has(.label-sheet) app-settings,body:has(.label-sheet) .label-preview{margin:0!important;padding:0!important;min-height:0!important;width:auto!important;border:0!important;box-shadow:none!important;background:white!important;color:#111!important}
+}
+
+.theme-menu .mat-mdc-menu-item-text{display:flex;align-items:center;justify-content:space-between;gap:20px;width:100%}.theme-menu .mat-mdc-menu-item{min-height:48px}.brand app-business-brand{width:100%}
+
+.theme-menu.mat-mdc-menu-panel{border:1px solid var(--control);border-radius:4px;min-width:240px;max-width:calc(100vw - 24px);background:var(--surface);color:var(--ink)}.theme-menu .mat-mdc-menu-item{color:var(--ink)}.theme-menu .mat-mdc-menu-item[aria-checked="true"]{background:var(--primary-soft)}.theme-menu .mat-mdc-menu-item.cdk-keyboard-focused{outline:2px solid var(--focus);outline-offset:-3px}
+.theme-access .mdc-button__label{display:flex;align-items:center;gap:8px;max-width:130px;font-size:1rem}.theme-access .mdc-button__label>span{font-size:1rem;white-space:normal}
+
+/* Personal screen scaling never changes print measurements. Overlay coordinates stay in viewport pixels. */
+app-root{display:block;zoom:var(--ui-scale,1)}
+.cdk-overlay-popover{zoom:var(--overlay-scale,1)}
+
+.product-view-options{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0 20px}
+.product-view-options button[aria-pressed=true]{background:var(--primary-soft);border:2px solid var(--primary)}
+.product-with-photo{display:flex;align-items:center;gap:12px;min-width:160px;overflow-wrap:anywhere}
+.product-with-photo>span{min-width:0}
+.pos-card app-product-photo{width:100%;height:112px}
+@media print{app-root,.cdk-overlay-popover{zoom:1!important}}
+
+/* Center header icon actions independently of Material padding. */
+.topbar-actions>.mat-mdc-icon-button{display:inline-flex;align-items:center;justify-content:center;padding:0}
+.topbar-actions>.mat-mdc-icon-button app-icon{display:inline-flex;align-items:center;justify-content:center;margin:0}

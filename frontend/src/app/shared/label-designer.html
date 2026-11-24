@@ -1,0 +1,25 @@
+<section class="panel label-preview">
+ <h2>Formato y vista previa de etiquetas</h2>
+ <div class="form-grid">
+  <mat-form-field appearance="outline"><mat-label>Tamaño de etiqueta</mat-label><mat-select [value]="formatId()" (selectionChange)="changeFormat($event.value)" [disabled]="printing()">@for(f of formats;track f.id){<mat-option [value]="f.id">{{f.name}}</mat-option>}</mat-select></mat-form-field>
+  @if(format().kind==='sheet'){
+   <mat-form-field appearance="outline"><mat-label>Primera posición disponible</mat-label><input matInput #position type="number" min="1" [max]="capacity()" step="1" [value]="start()" (input)="setStart(position.value)" [disabled]="printing()"><mat-hint>De izquierda a derecha y de arriba abajo. Entre 1 y {{capacity()}}.</mat-hint></mat-form-field>
+  }
+ </div>
+ <p>Etiqueta de {{format().width}} × {{format().height}} mm · {{label().cantidad}} etiquetas · {{pages().length}} {{format().kind==='sheet'?'hojas A4':'páginas de rollo'}}.</p>
+ <p class="field-note">Imprime a tamaño real (100 %), sin ajustar a página y sin encabezados ni pies del navegador. Selecciona este mismo papel en la impresora. La vista en pantalla es orientativa.</p>
+ @if(format().kind==='sheet'){<p class="notice info">Plantilla nominal sin separación: {{format().columns}} columnas × {{format().rows}} filas. Requiere comprobar los márgenes de la hoja adhesiva y el área imprimible; algunas impresoras no imprimen hasta el borde. Haz una prueba en papel común.</p>}
+ @if(format().kind==='butterfly'){<p class="notice info">Dos extremos de 22 × 15 mm y un centro libre de 6 mm para envolver. El código ocupa un solo extremo. Comprueba el troquel y la lectura antes de imprimir una serie.</p>}
+ @if(format().height<=25){<p class="field-note">Formato compacto: se omite la presentación y se abrevia visualmente el nombre. Para texto más grande utiliza 60 × 40 mm o superior.</p>}
+ @if(barcodeProblem()){<p class="notice warning" role="alert">{{barcodeProblem()}}</p>}
+ @if(!pages().length){<p class="notice danger" role="alert">Revisa la primera posición disponible y la cantidad de etiquetas.</p>}
+ @if(printError()){<p class="notice danger" role="alert">{{printError()}}</p>}
+ <div class="form-actions"><button mat-flat-button (click)="print()" [disabled]="printing()||!!barcodeProblem()||!pages().length">{{printing()?'Preparando impresión…':'Imprimir etiquetas'}}</button></div>
+ <div class="label-preview-scroll" role="region" aria-label="Vista previa de las hojas de etiquetas" tabindex="0">
+  <div #pagesArea class="label-pages" [class.compact]="format().height<=30" [class.mini]="format().height<=20" [class.butterfly]="format().kind==='butterfly'" [style.--lw]="format().width+'mm'" [style.--lh]="format().height+'mm'" [style.--cols]="format().columns" [style.--pw]="format().kind==='sheet'?'210mm':format().width+'mm'" [style.--ph]="format().kind==='sheet'?'297mm':format().height+'mm'" [style.--bh]="barcodeMm()+'mm'">
+   @for(page of pages();track $index){<div class="label-page" [attr.aria-label]="'Página '+($index+1)">
+    @for(cell of page;track $index){@if(cell===null){<div aria-hidden="true"></div>}@else{<article class="product-label"><strong class="label-name" [title]="label().producto">{{label().producto}}</strong><span class="label-presentation" [title]="label().presentacion">{{label().presentacion}}</span><app-barcode [value]="label().codigo" [format]="label().simbologia" [barHeight]="barcodeHeight()"/><span class="label-price">S/ {{label().precio | number:'1.2-2'}}</span></article>}}
+   </div>}
+  </div>
+ </div>
+</section>

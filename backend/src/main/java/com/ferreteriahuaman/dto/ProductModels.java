@@ -9,7 +9,7 @@ public final class ProductModels {
  private ProductModels(){}
  public record Product(long id,String codigo,String nombre,String descripcion,long categoriaId,String categoria,long unidadId,String unidad,
   boolean admiteFracciones,String incrementoBase,String minimoVentaBase,String modoControl,String stockMinimo,String ubicacion,
-  String stockActual,String precioBase,String ultimoCostoCompra,String costoPromedio,String estado,LocalDateTime version){}
+  String stockActual,String precioBase,String ultimoCostoCompra,String costoPromedio,String estado,LocalDateTime version,String imagenHash){}
  public record ProductInput(@NotBlank @Size(max=30) @Pattern(regexp="[A-Z0-9._-]+") String codigo,@NotBlank @Size(max=120) String nombre,
   @Size(max=300) String descripcion,@Positive long categoriaId,@Positive long unidadId,boolean admiteFracciones,
   @NotNull @DecimalMin(value="0",inclusive=false) @Digits(integer=12,fraction=6) BigDecimal incrementoBase,

@@ -3,7 +3,8 @@ import {TestBed} from '@angular/core/testing';
 import {provideRouter} from '@angular/router';
 import {RouterTestingHarness} from '@angular/router/testing';
 import {By} from '@angular/platform-browser';
-import {of} from 'rxjs';
+import {of,Subject,throwError} from 'rxjs';
+import {CatalogPage} from '../core/catalog.service';
 import {routes} from '../app.routes';
 import {AuthService} from '../core/auth.service';
 import {
@@ -15,6 +16,8 @@ import {
 import {Dispatch} from './dispatch';
 
 describe('Despachos de pedidos conectados', () => {
+  let currentHarness:RouterTestingHarness;
+  afterEach(()=>vi.useRealTimers());
   const summary: DispatchSummary = {
     pendientes: 2,
     preparados: 1,
@@ -111,7 +114,7 @@ describe('Despachos de pedidos conectados', () => {
   });
 
   async function createPage(url: string) {
-    const harness = await RouterTestingHarness.create(url);
+    const harness = await RouterTestingHarness.create(url);currentHarness=harness;
     harness.detectChanges();
     await TestBed.inject(ApplicationRef).whenStable();
     harness.detectChanges();
@@ -168,8 +171,9 @@ describe('Despachos de pedidos conectados', () => {
 
   it('confirma entrega con nombre de quien retira y UUID', async () => {
     const p = await createPage('/despachos');
-    p.openDeliverModal(sampleRow);
-    expect(p.deliverTarget()).toEqual(sampleRow);
+    const prepared={...sampleRow,estado:'PREPARADO' as const};
+    p.openDeliverModal(prepared);
+    expect(p.deliverTarget()).toEqual(prepared);
 
     p.deliverForm.controls.recibe.setValue('Carlos Ruiz');
     p.deliverForm.controls.observacion.setValue('Entregado conforme');
@@ -196,4 +200,64 @@ describe('Despachos de pedidos conectados', () => {
     p.openDeliverModal(sampleRow);
     expect(p.deliverTarget()).toBeNull();
   });
+  it('pagina y conserva el filtro aplicado',async()=>{
+    const p=await createPage('/despachos');p.setTab('PREPARADO');p.total.set(41);p.nextPage(1);
+    expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({estado:'PREPARADO'}),1,20);
+    p.total.set(41);p.nextPage(1);p.total.set(41);api.list.mockClear();p.nextPage(1);
+    expect(p.page()).toBe(2);expect(api.list).not.toHaveBeenCalled();
+  });
+  it('rechaza fechas invertidas antes de consultar',async()=>{
+    const p=await createPage('/despachos');api.list.mockClear();p.filters.patchValue({desde:'2026-10-25',hasta:'2026-10-01'});p.applyFilters();
+    expect(api.list).not.toHaveBeenCalled();expect(p.error()).toContain('fechas');
+  });
+  it('no permite entregar un pendiente ni preparar un entregado',async()=>{
+    const p=await createPage('/despachos');p.openDeliverModal(sampleRow);p.openPrepareModal({...sampleRow,estado:'ENTREGADO'});
+    expect(p.deliverTarget()).toBeNull();expect(p.prepareTarget()).toBeNull();expect(api.deliver).not.toHaveBeenCalled();
+  });
+  it('ignora respuestas anteriores al cambiar de estado',async()=>{
+    const p=await createPage('/despachos');const old=new Subject<CatalogPage<DispatchRow>>(),latest=new Subject<CatalogPage<DispatchRow>>();
+    api.list.mockImplementationOnce(()=>old).mockImplementationOnce(()=>latest);p.reload();p.setTab('ENTREGADO');
+    old.next({items:[sampleRow],total:99,pagina:0,tamano:20});latest.next({items:[],total:0,pagina:0,tamano:20});latest.complete();
+    expect(p.total()).toBe(0);expect(p.rows()).toEqual([]);expect(p.loading()).toBe(false);
+  });
+  it('distingue el fallo del resumen de un contador en cero',async()=>{
+    api.summary.mockImplementationOnce(()=>throwError(()=>({status:0})));const p=await createPage('/despachos');
+    expect(p.summaryReady()).toBe(false);expect(p.summaryError()).toContain('No se pudo');expect(currentHarness.routeNativeElement?.textContent).toContain('—');
+  });
+  it('reutiliza clave y datos de preparación tras una respuesta incierta',async()=>{
+    const p=await createPage('/despachos');p.openPrepareModal(sampleRow);p.prepareForm.controls.observacion.setValue('Dos cajas');
+    api.prepare.mockImplementationOnce(()=>throwError(()=>({status:0})));p.submitPrepare();const first=api.prepare.mock.calls[0][1];
+    p.prepareForm.controls.observacion.setValue('Otro dato');p.submitPrepare();expect(api.prepare.mock.calls[1][1]).toEqual(first);
+  });
+  it('reutiliza clave y receptor de entrega después de un error del servidor',async()=>{
+    const p=await createPage('/despachos');p.openDeliverModal({...sampleRow,estado:'PREPARADO'});p.deliverForm.controls.recibe.setValue('Persona que retira');
+    api.deliver.mockImplementationOnce(()=>throwError(()=>({status:503})));p.submitDeliver();const first=api.deliver.mock.calls[0][1];
+    p.deliverForm.controls.recibe.setValue('Otro nombre');p.submitDeliver();expect(api.deliver.mock.calls[1][1]).toEqual(first);
+  });
+  it('muestra el error dentro del diálogo y permite corregir un rechazo conocido',async()=>{
+    const p=await createPage('/despachos');p.openPrepareModal(sampleRow);
+    api.prepare.mockImplementationOnce(()=>throwError(()=>({status:409,error:{detail:'El pedido cambió en otra sesión.'}})));p.submitPrepare();currentHarness.detectChanges();
+    expect(currentHarness.routeNativeElement?.querySelector('[aria-label="Preparar despacho"] [role="alert"]')?.textContent).toContain('otra sesión');
+    expect(p.prepareOperation()).toBeNull();
+  });
+  it('no cierra ni abre otras operaciones mientras se prepara',async()=>{
+    const p=await createPage('/despachos');const pending=new Subject<DispatchDetail>();api.prepare.mockImplementationOnce(()=>pending);p.openPrepareModal(sampleRow);p.submitPrepare();
+    p.closePrepareModal();p.openSheet(1);p.openDeliverModal({...sampleRow,estado:'PREPARADO'});
+    expect(p.prepareTarget()).toEqual(sampleRow);expect(p.deliverTarget()).toBeNull();expect(api.get).not.toHaveBeenCalled();pending.complete();
+  });
+  it('interpreta las fechas de negocio en Lima y evita tiempos inválidos',async()=>{
+    vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-25T17:00:00Z'));const p=await createPage('/despachos');
+    expect(p.timeAgo('2026-10-25 11:00:00')).toBe('Hace 1 h');expect(p.timeAgo('fecha rota')).toBe('Fecha no disponible');
+  });
+  it('prepara un documento A4 completo y aislado con muchas líneas',async()=>{
+    const p=await createPage('/despachos');api.get.mockImplementationOnce(()=>of({...sampleDetail,items:Array.from({length:125},(_,i)=>({...sampleDetail.items[0],id:i+1,productoNombre:'Producto <script>alert(1)</script> '+i}))}));
+    p.openSheet(1);currentHarness.detectChanges();p.printSheet();const frame=document.querySelector('iframe')!;
+    expect(frame.srcdoc).toContain('@page{size:A4');expect(frame.srcdoc).toContain('max-height:none');
+    const parsed=new DOMParser().parseFromString(frame.srcdoc,'text/html');expect(parsed.querySelectorAll('tbody tr')).toHaveLength(125);
+    expect(parsed.querySelector('script')).toBeNull();expect(parsed.querySelector('button,input')).toBeNull();expect(parsed.querySelector('.sheet-signatures')).not.toBeNull();
+  });
+
+
+
+
 });

@@ -14,8 +14,9 @@ import {Icon} from '../shared/icon';
 import {EmptyState} from '../shared/empty-state';
 import {Field} from '../shared/field';
 import {Page as PageDefinition} from '../core/screens';
+import {DisplaySettings} from '../shared/display-settings';
 import {ThemeService,THEMES} from '../core/theme.service';
-@Component({selector:'app-page',imports:[RouterLink,MatButtonModule,MatFormFieldModule,MatInputModule,MatSelectModule,MatTabsModule,MatCheckboxModule,Icon,EmptyState,Field],templateUrl:'./page.html'})
+@Component({selector:'app-page',imports:[DisplaySettings,RouterLink,MatButtonModule,MatFormFieldModule,MatInputModule,MatSelectModule,MatTabsModule,MatCheckboxModule,Icon,EmptyState,Field],templateUrl:'./page.html'})
 export class Page {
  readonly auth=inject(AuthService);
  private readonly data=toSignal(inject(ActivatedRoute).data);

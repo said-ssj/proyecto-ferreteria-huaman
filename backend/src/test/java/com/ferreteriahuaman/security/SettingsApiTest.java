@@ -1,0 +1,17 @@
+package com.ferreteriahuaman.security;
+import com.ferreteriahuaman.controller.SettingsController;import com.ferreteriahuaman.service.*;import com.ferreteriahuaman.security.AuthModels.Identity;import com.ferreteriahuaman.exception.ApiExceptionHandler;
+import java.time.*;import java.util.*;import org.junit.jupiter.api.*;import org.springframework.beans.factory.annotation.Autowired;import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;import org.springframework.boot.test.mock.mockito.MockBean;import org.springframework.context.annotation.Import;import org.springframework.test.context.ActiveProfiles;import org.springframework.test.web.servlet.MockMvc;
+import static org.mockito.Mockito.*;import static org.mockito.ArgumentMatchers.*;import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+@WebMvcTest(SettingsController.class) @ActiveProfiles("db") @Import({ApiSecurityConfig.class,SecurityConfig.class,ApiExceptionHandler.class})
+class SettingsApiTest{
+ @Autowired MockMvc mvc;@MockBean AuthService auth;@MockBean SettingsService service;
+ void login(String...p){when(auth.authenticate(anyString(),anyString())).thenReturn(new Identity(1,"admin.test","N","A","ADM",false,Set.of(p),UUID.randomUUID(),OffsetDateTime.now().plusHours(1)));}
+ @Test void anonymousCannotReadSettings()throws Exception{mvc.perform(get("/api/configuracion/parametros")).andExpect(status().isUnauthorized());}
+ @Test void salespersonCannotChangeSettings()throws Exception{login("VEN.VENDER");mvc.perform(put("/api/configuracion/parametros").header("Authorization","Bearer test").contentType("application/json").content("{}")).andExpect(status().isForbidden());verifyNoInteractions(service);}
+ @Test void ticketPermissionDoesNotAllowGeneralParameters()throws Exception{login("CFG.TICKET");mvc.perform(get("/api/configuracion/parametros").header("Authorization","Bearer test")).andExpect(status().isForbidden());}
+ @Test void seriesRequiresItsOwnPermission()throws Exception{login("CFG.PARAMETROS");mvc.perform(get("/api/configuracion/series").header("Authorization","Bearer test")).andExpect(status().isForbidden());}
+ @Test void emptyBatchAndUnknownAuditFieldsAreRejected()throws Exception{login("CFG.PARAMETROS");for(String body:List.of("{\"cambios\":[]}","{\"cambios\":[{\"clave\":\"NEGOCIO.RUC\",\"valor\":\"\",\"usucre\":\"falso\"}]}"))mvc.perform(put("/api/configuracion/parametros").header("Authorization","Bearer test").contentType("application/json").content(body)).andExpect(status().isBadRequest());verifyNoInteractions(service);}
+ @Test void fractionalInitialNumberIsNotRounded()throws Exception{login("CFG.SERIES");mvc.perform(post("/api/configuracion/series").header("Authorization","Bearer test").contentType("application/json").content("{\"tipo\":\"B\",\"serie\":\"B002\",\"inicial\":1.5}")).andExpect(status().isBadRequest());}
+ @Test void unlimitedLabelBatchIsRejected()throws Exception{login("CFG.ETIQUETAS");mvc.perform(post("/api/configuracion/etiquetas").header("Authorization","Bearer test").contentType("application/json").content("{\"productoId\":1,\"presentacionId\":2,\"cantidad\":10000}")).andExpect(status().isBadRequest());}
+ @Test void seriesCannotBeDeleted()throws Exception{login("CFG.SERIES");mvc.perform(delete("/api/configuracion/series/1").header("Authorization","Bearer test")).andExpect(status().isForbidden());}
+}

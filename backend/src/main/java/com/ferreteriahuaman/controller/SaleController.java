@@ -1,7 +1,8 @@
 package com.ferreteriahuaman.controller;
 import com.ferreteriahuaman.dto.SaleModels.*;import com.ferreteriahuaman.dto.CatalogModels.Page;import com.ferreteriahuaman.security.AuthModels.Identity;import com.ferreteriahuaman.service.SaleService;import java.util.*;import jakarta.servlet.http.HttpServletRequest;import jakarta.validation.Valid;import org.springframework.context.annotation.Profile;import org.springframework.security.core.annotation.AuthenticationPrincipal;import org.springframework.web.bind.annotation.*;
 @RestController @Profile("db") @RequestMapping("/api/ventas") public class SaleController {
- private final SaleService service;public SaleController(SaleService service){this.service=service;}
+ private final SaleService service;private final com.ferreteriahuaman.service.PosCustomerService customers;public SaleController(SaleService service,com.ferreteriahuaman.service.PosCustomerService customers){this.service=service;this.customers=customers;}
+ @GetMapping("/clientes/buscar") public ClientLookup customer(@RequestParam String documento){return customers.lookup(documento);}
  @GetMapping("/opciones") public Map<String,Object> options(){return service.options();}
  @GetMapping("/borradores") public List<Map<String,Object>> drafts(@AuthenticationPrincipal Identity a){return service.drafts(a);}
  @GetMapping("/{id}") public Details detail(@AuthenticationPrincipal Identity a,@PathVariable long id){return service.details(a,id);}

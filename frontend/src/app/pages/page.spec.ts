@@ -1,3 +1,7 @@
+import {XmlTrialService} from '../core/xml-trial.service';
+import {UserAdminService} from '../core/user-admin.service';
+import {ReportService} from '../core/report.service';
+import {AuditService} from '../core/audit.service';
 import {QuoteService} from '../core/quote.service';
 import {SaleHistoryService} from '../core/sale-history.service';
 import {InventoryService} from '../core/inventory.service';
@@ -20,17 +24,17 @@ import {PAGES} from '../core/screens';
 import {ThemeService,THEMES} from '../core/theme.service';
 
 describe('Frontend sin datos',()=>{
- beforeEach(()=>TestBed.configureTestingModule({providers:[provideRouter(routes),{provide:QuoteService,useValue:{options:()=>of({hoy:'2026-10-18',vigenciaDias:7,caja:null}),list:()=>of({items:[],total:0,pagina:0,tamano:20})}},{provide:SaleHistoryService,useValue:{list:()=>of({items:[],total:0,pagina:0,tamano:20}),sellers:()=>of([])}},{provide:InventoryService,useValue:{list:()=>of({items:[],total:0,pagina:0,tamano:20}),reasons:()=>of([])}},{provide:PurchaseService,useValue:{list:()=>of({items:[],total:0,pagina:0,tamano:20}),suppliers:()=>of({items:[],total:0,pagina:0,tamano:20}),supplierOptions:()=>of([])}},{provide:ProductService,useValue:{list:()=>of({items:[],total:0,pagina:0,tamano:20}),options:()=>of([])}},{provide:CatalogService,useValue:{list:()=>of({items:[],total:0,pagina:0,tamano:20})}},{provide:AuthService,useValue:{
+ beforeEach(()=>TestBed.configureTestingModule({providers:[provideRouter(routes),{provide:XmlTrialService,useValue:{status:()=>of({modo:'LOCAL_SIN_FIRMA',enviosHabilitados:false,firmaDigital:false,validezTributaria:false})}},{provide:UserAdminService,useValue:{roles:()=>of([]),list:()=>of({items:[],total:0,pagina:0,tamano:20})}},{provide:ReportService,useValue:{dates:()=>of({hoy:null})}},{provide:AuditService,useValue:{options:()=>of({acciones:[]}),list:()=>of({items:[],total:0,pagina:0,tamano:25})}},{provide:QuoteService,useValue:{options:()=>of({hoy:'2026-10-18',vigenciaDias:7,caja:null}),list:()=>of({items:[],total:0,pagina:0,tamano:20})}},{provide:SaleHistoryService,useValue:{list:()=>of({items:[],total:0,pagina:0,tamano:20}),sellers:()=>of([])}},{provide:InventoryService,useValue:{list:()=>of({items:[],total:0,pagina:0,tamano:20}),reasons:()=>of([])}},{provide:PurchaseService,useValue:{list:()=>of({items:[],total:0,pagina:0,tamano:20}),suppliers:()=>of({items:[],total:0,pagina:0,tamano:20}),supplierOptions:()=>of([])}},{provide:ProductService,useValue:{list:()=>of({items:[],total:0,pagina:0,tamano:20}),options:()=>of([])}},{provide:CatalogService,useValue:{list:()=>of({items:[],total:0,pagina:0,tamano:20})}},{provide:AuthService,useValue:{
  authenticated:()=>true,token:()=>null,user:signal({id:1,usuario:'cuenta.prueba',nombres:'Nombre',apellidos:'Apellido',rol:'ADM',permisos:[],cambioClaveObligatorio:false,expiraEn:new Date(Date.now()+1800000).toISOString()}),
  has:()=>true,can:()=>true,canAction:()=>true,tick:()=>{},activity:()=>{},busy:()=>false,warning:()=>false,message:()=>'',roleName:()=> 'Administración'
  }}]}));
- it('renderiza todas las pantallas registradas con un encabezado y sin datos de entrada',async()=>{
+ it('renderiza las pantallas sin registros ficticios y conserva valores iniciales válidos',async()=>{
  const harness=await RouterTestingHarness.create();
  for(const page of PAGES){
  await harness.navigateByUrl('/'+page.path);harness.detectChanges();
  const root=harness.routeNativeElement!;
  expect(root.querySelector('h1')?.textContent).toContain(page.title);
- for(const input of Array.from(root.querySelectorAll('input:not([type=checkbox]),textarea')) as HTMLInputElement[]){expect(input.value).toBe('');}
+ for(const input of Array.from(root.querySelectorAll('input:not([type=checkbox]),textarea')) as HTMLInputElement[]){expect(input.value).toBe(page.path==='comprobantes/series/nueva'&&input.getAttribute('formcontrolname')==='inicial'?'1':'');}
  for(const checkbox of Array.from(root.querySelectorAll('input[type=checkbox]')) as HTMLInputElement[]){expect(checkbox.checked).toBe(false);}
  expect(root.textContent).not.toMatch(/versión demo|plantilla|Carlos M\.|Juan Pérez|163\.90/i);
  }
@@ -41,10 +45,10 @@ describe('Frontend sin datos',()=>{
  expect(buttons.find(b=>b.textContent?.includes('Revisar venta'))?.disabled).toBe(true);
  expect(h.routeNativeElement!.querySelector('input[placeholder="00000000"]')?.getAttribute('placeholder')).toBe('00000000');
  });
- it('aplica los seis temas y descarta identificadores desconocidos',()=>{
+ it('aplica los temas disponibles y descarta identificadores desconocidos',()=>{
  const theme=TestBed.inject(ThemeService);
  for(const item of THEMES){theme.set(item.id);expect(document.documentElement.dataset['theme']).toBe(item.id);}
- theme.set('desconocido');expect(theme.current()).toBe('noche-suave');theme.set('plomo');
+ const active=theme.current();theme.set('desconocido');expect(theme.current()).toBe(active);theme.set('plomo');
  });
  it('muestra acceso denegado y página no encontrada',async()=>{
  const h=await RouterTestingHarness.create('/acceso-denegado');

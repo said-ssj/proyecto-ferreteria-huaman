@@ -1,0 +1,17 @@
+package com.ferreteriahuaman.service;
+import com.ferreteriahuaman.repository.*;import com.ferreteriahuaman.dto.ReportModels.*;import com.ferreteriahuaman.dto.CatalogModels.Page;import com.ferreteriahuaman.security.AuthModels.Identity;import com.ferreteriahuaman.security.AuthFailure;import java.time.*;import java.util.*;import org.junit.jupiter.api.*;import static org.assertj.core.api.Assertions.*;import static org.mockito.Mockito.*;
+class ReportServiceTest{
+ ReportRepository repo=mock(ReportRepository.class);ReportService service=new ReportService(repo,mock(BusinessTransactions.class),mock(AuthStore.class));
+ Identity actor(String role,String...permissions){return new Identity(1,"cuenta","N","A",role,false,Set.of(permissions),UUID.randomUUID(),OffsetDateTime.now().plusHours(1));}
+ Filter filter(){return new Filter(LocalDate.of(2026,10,1),LocalDate.of(2026,10,24),null,"",0);}
+ @Test void financialReportRequiresAdminEvenWithPermission(){assertThatThrownBy(()->service.sales(actor("VEN","REP.VENTAS"),"ventas",filter())).isInstanceOf(AuthFailure.class);verifyNoInteractions(repo);}
+ @Test void dashboardRequiresSpecificPermission(){assertThatThrownBy(()->service.sales(actor("ADM","REP.VENTAS"),"dashboard",filter())).isInstanceOf(AuthFailure.class);}
+ @Test void rejectsMissingAndReversedDates(){for(var f:List.of(new Filter(null,LocalDate.now(),null,"",0),new Filter(LocalDate.of(2026,10,25),LocalDate.of(2026,10,24),null,"",0)))assertThatThrownBy(()->service.validate(f,false)).isInstanceOf(AuthFailure.class);}
+ @Test void rejectsUnboundedPeriods(){assertThatThrownBy(()->service.validate(new Filter(LocalDate.of(2025,1,1),LocalDate.of(2026,10,24),null,"",0),false)).isInstanceOf(AuthFailure.class);}
+ @Test void productReportRequiresSelectedProduct(){assertThatThrownBy(()->service.sales(actor("ADM","REP.PRODUCTO"),"productos",filter())).isInstanceOf(AuthFailure.class);verifyNoInteractions(repo);}
+ @Test void inventoryForWarehouseOmitsAllCosts(){when(repo.inventory(any(),eq(25),eq(false))).thenReturn(new Tabular(filter().desde(),filter().hasta(),Map.of("productos",1,"valor","25.00"),new Page<>(List.of(Map.of("id",1,"stock","5","costo","5","valor","25")),1,0,25)));var r=service.inventory(actor("ALM","REP.INVENTARIO"),filter());assertThat(r.resumen()).doesNotContainKey("valor");assertThat(r.registros().items().getFirst()).doesNotContainKeys("costo","valor");}
+ @Test void inventoryAdminKeepsValuation(){var expected=new Tabular(filter().desde(),filter().hasta(),Map.of("valor","25"),new Page<>(List.of(),0,0,25));when(repo.inventory(any(),eq(25),eq(false))).thenReturn(expected);assertThat(service.inventory(actor("ADM","REP.INVENTARIO"),filter())).isSameAs(expected);}
+ @Test void exportRequiresExportAndReportPermissions(){assertThatThrownBy(()->service.export(actor("ADM","REP.VENTAS"),"test","ventas",filter())).isInstanceOf(AuthFailure.class);assertThatThrownBy(()->service.export(actor("ADM","REP.EXPORTAR"),"test","ventas",filter())).isInstanceOf(AuthFailure.class);verifyNoInteractions(repo);}
+ @Test void csvEscapesQuotesAndBlocksFormulas(){var csv=service.csv(List.of("producto","margen"),List.of(Map.of("producto","=HYPERLINK(\"x\")","margen","-5.25")));assertThat(csv).contains("'=HYPERLINK(\"\"x\"\")","\"-5.25\"");}
+ @Test void invalidQueryAndPageAreRejected(){assertThatThrownBy(()->service.products(actor("ADM","REP.PRODUCTO"),"x".repeat(101),0)).isInstanceOf(AuthFailure.class);assertThatThrownBy(()->service.validate(new Filter(filter().desde(),filter().hasta(),null,"",-1),false)).isInstanceOf(AuthFailure.class);}
+}

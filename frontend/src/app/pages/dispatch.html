@@ -19,15 +19,15 @@
   </header>
 
   <!-- Alerts -->
-  @if (error()) {
-    <div class="alert alert-error print-hidden" role="alert">
+  @if (error() && !sheetDetail() && !prepareTarget() && !deliverTarget()) {
+    <div class="notice danger print-hidden" role="alert">
       <app-icon name="error"></app-icon>
       <span>{{ error() }}</span>
       <button class="alert-close" type="button" (click)="error.set('')" aria-label="Cerrar">✕</button>
     </div>
   }
   @if (success()) {
-    <div class="alert alert-success print-hidden" role="status">
+    <div class="notice success print-hidden" role="status">
       <app-icon name="check_circle"></app-icon>
       <span>{{ success() }}</span>
       <button class="alert-close" type="button" (click)="success.set('')" aria-label="Cerrar">✕</button>
@@ -39,51 +39,54 @@
     <button
       type="button"
       class="tab-btn"
-      [class.active]="activeTab() === 'PENDIENTE'"
+      [class.active]="activeTab() === 'PENDIENTE'" [attr.aria-pressed]="activeTab() === 'PENDIENTE'" [disabled]="busy()"
       (click)="setTab('PENDIENTE')"
     >
       <app-icon name="pending_actions"></app-icon>
       <span>Pendientes</span>
-      <span class="tab-badge warning">{{ summary().pendientes }}</span>
+      <span class="tab-badge warning">{{ summaryReady()?summary().pendientes:'—' }}</span>
     </button>
     <button
       type="button"
       class="tab-btn"
-      [class.active]="activeTab() === 'PREPARADO'"
+      [class.active]="activeTab() === 'PREPARADO'" [attr.aria-pressed]="activeTab() === 'PREPARADO'" [disabled]="busy()"
       (click)="setTab('PREPARADO')"
     >
       <app-icon name="inventory_2"></app-icon>
       <span>Preparados</span>
-      <span class="tab-badge info">{{ summary().preparados }}</span>
+      <span class="tab-badge info">{{ summaryReady()?summary().preparados:'—' }}</span>
     </button>
     <button
       type="button"
       class="tab-btn"
-      [class.active]="activeTab() === 'ENTREGADO'"
+      [class.active]="activeTab() === 'ENTREGADO'" [attr.aria-pressed]="activeTab() === 'ENTREGADO'" [disabled]="busy()"
       (click)="setTab('ENTREGADO')"
     >
       <app-icon name="check_circle"></app-icon>
       <span>Entregados</span>
-      <span class="tab-badge success">{{ summary().entregados }}</span>
+      <span class="tab-badge success">{{ summaryReady()?summary().entregados:'—' }}</span>
     </button>
     <button
       type="button"
       class="tab-btn"
-      [class.active]="activeTab() === 'ANULADO'"
+      [class.active]="activeTab() === 'ANULADO'" [attr.aria-pressed]="activeTab() === 'ANULADO'" [disabled]="busy()"
       (click)="setTab('ANULADO')"
     >
       <app-icon name="cancel"></app-icon>
       <span>Anulados</span>
-      <span class="tab-badge">{{ summary().anulados }}</span>
+      <span class="tab-badge">{{ summaryReady()?summary().anulados:'—' }}</span>
     </button>
   </nav>
 
+  @if(summaryError()){<p class="notice warning" role="alert">{{summaryError()}} <button mat-stroked-button type="button" (click)="loadSummary()">Reintentar resumen</button></p>}
+  <p class="field-note">Los contadores son generales; Entregados incluye las entregas desde hace siete días. Los filtros se aplican al listado.</p>
   <!-- Filter Bar -->
   <form [formGroup]="filters" (ngSubmit)="applyFilters()" class="filter-bar print-hidden">
     <div class="filter-field search-field">
       <mat-form-field appearance="outline" subscriptSizing="dynamic">
-        <mat-label>Buscar por comprobante, cliente o N.º de pedido</mat-label>
-        <input matInput formControlName="buscar" placeholder="Ej: DP-000001, B001, Carlos">
+        <mat-label>Buscar pedido</mat-label>
+        <input matInput formControlName="buscar" maxlength="100" placeholder="Ej: DP-000001, B001, Carlos">
+        <mat-hint>Comprobante, cliente o número de pedido.</mat-hint>
       </mat-form-field>
     </div>
 
@@ -97,16 +100,16 @@
     <div class="filter-field date-field">
       <mat-form-field appearance="outline" subscriptSizing="dynamic">
         <mat-label>Hasta</mat-label>
-        <input matInput type="date" formControlName="hasta">
+        <input matInput type="date" formControlName="hasta" [min]="filters.controls.desde.value">
       </mat-form-field>
     </div>
 
     <div class="filter-actions">
-      <button mat-flat-button color="primary" type="submit" [disabled]="loading()">
+      <button mat-flat-button color="primary" type="submit" [disabled]="loading()||busy()">
         <app-icon name="search"></app-icon>
         Filtrar
       </button>
-      <button mat-stroked-button type="button" (click)="clearFilters()" [disabled]="loading()">
+      <button mat-stroked-button type="button" (click)="clearFilters()" [disabled]="loading()||busy()">
         Limpiar
       </button>
     </div>
@@ -118,7 +121,7 @@
       <div class="spinner"></div>
       <p>Cargando despachos...</p>
     </div>
-  } @else if (rows().length === 0) {
+  } @else if (loaded() && rows().length === 0) {
     <app-empty-state
       class="print-hidden"
       [icon]="activeTab() === 'PENDIENTE' ? 'task_alt' : 'inventory_2'"
@@ -199,7 +202,7 @@
             <button
               mat-stroked-button
               type="button"
-              (click)="openSheet(d.id)"
+              (click)="openSheet(d.id)" [disabled]="busy()"
               title="Ver hoja de preparación"
             >
               <app-icon name="description"></app-icon>
@@ -211,7 +214,7 @@
                 mat-flat-button
                 color="primary"
                 type="button"
-                (click)="openPrepareModal(d)"
+                (click)="openPrepareModal(d)" [disabled]="busy()"
               >
                 <app-icon name="done"></app-icon>
                 Marcar preparado
@@ -223,7 +226,7 @@
                 mat-flat-button
                 class="btn-deliver"
                 type="button"
-                (click)="openDeliverModal(d)"
+                (click)="openDeliverModal(d)" [disabled]="busy()"
               >
                 <app-icon name="check_circle"></app-icon>
                 Confirmar entrega
@@ -234,12 +237,13 @@
       }
     </div>
   }
+  <div class="catalog-pagination print-hidden"><span>{{total()}} despachos · Página {{page()+1}}</span><div><button mat-stroked-button type="button" [disabled]="loading()||busy()||page()===0" (click)="nextPage(-1)">Anterior</button><button mat-stroked-button type="button" [disabled]="loading()||busy()||(page()+1)*pageSize()>=total()" (click)="nextPage(1)">Siguiente</button></div></div>
 </div>
 
 <!-- Modal 1: Hoja de preparación (P30.B1, P30.B4) -->
 @if (sheetDetail(); as sh) {
   <div class="modal-backdrop">
-    <div class="modal-card preparation-sheet pos-receipt" appModal [modalLocked]="busy()" (modalClose)="closeSheet()" aria-label="Hoja de preparación">
+    <div #sheet class="modal-card preparation-sheet" appModal [modalLocked]="busy()" (modalClose)="closeSheet()" aria-label="Hoja de preparación">
       <header class="sheet-header">
         <div>
           <h2 id="sheet-modal-title" class="sheet-title">Hoja de preparación de pedido</h2>
@@ -256,6 +260,7 @@
         </div>
       </header>
 
+      @if(error()){<p class="notice danger print-hidden" role="alert">{{error()}}</p>}
       <!-- Sheet meta info -->
       <section class="sheet-meta-grid">
         <div class="meta-item">
@@ -294,7 +299,7 @@
 
       <!-- Products table -->
       <div class="sheet-table-wrap">
-        <table class="sheet-table">
+        <table class="sheet-table" aria-label="Productos de la hoja de preparación">
           <thead>
             <tr>
               <th class="col-check print-hidden">Listo</th>
@@ -308,7 +313,7 @@
             @for (item of sh.items; track item.id) {
               <tr>
                 <td class="col-check print-hidden">
-                  <input type="checkbox" class="prep-checkbox" aria-label="Marcar como preparado">
+                  <label class="check-label"><input type="checkbox" class="prep-checkbox" [attr.aria-label]="'Revisado: '+item.productoNombre+' · '+item.presentacionNombre"></label>
                 </td>
                 <td class="code-cell">{{ item.codigoProducto }}</td>
                 <td>
@@ -336,6 +341,7 @@
       </div>
 
       <footer class="sheet-footer">
+        <p class="field-note print-hidden">Las marcas Listo son una ayuda temporal de revisión; no cambian el estado del despacho.</p>
         <div class="sheet-signatures print-only">
           <div class="signature-box">
             <div class="signature-line"></div>
@@ -362,15 +368,18 @@
         <h2 id="prepare-modal-title" class="modal-title">Marcar pedido como preparado</h2>
         <button class="modal-close" type="button" (click)="closePrepareModal()" aria-label="Cerrar">✕</button>
       </header>
+      @if(prepareOperation()&&!busy()){<p class="notice info">Puedes reintentar con los mismos datos. Para revisar el estado, cancela y pulsa Actualizar.</p>}
       <form [formGroup]="prepareForm" (ngSubmit)="submitPrepare()">
         <div class="modal-body">
+          @if(error()){<p class="notice danger" role="alert">{{error()}}</p>}
           <p class="modal-intro">
             ¿Confirmas que los productos de <strong>{{ target.numeroFormateado }}</strong> (Venta: {{ target.comprobante || 'Nota de venta' }}) han sido verificados y embalados en almacén?
           </p>
 
           <mat-form-field appearance="outline" class="w-full">
-            <mat-label>Observación de preparación (opcional)</mat-label>
-            <textarea matInput formControlName="observacion" rows="3" placeholder="Ej: Embalado en 2 cajas selladas"></textarea>
+            <mat-label>Observación (opcional)</mat-label>
+            <textarea matInput formControlName="observacion" maxlength="300" [readonly]="busy()||!!prepareOperation()" rows="3" placeholder="Ej: Embalado en 2 cajas selladas"></textarea>
+            @if (prepareForm.controls.observacion.hasError('pattern')) {<mat-error>Escribe texto sin etiquetas HTML.</mat-error>}
             @if (prepareForm.controls.observacion.hasError('maxlength')) {
               <mat-error>Máximo 300 caracteres</mat-error>
             }
@@ -397,23 +406,27 @@
         <h2 id="deliver-modal-title" class="modal-title">Confirmar entrega de pedido</h2>
         <button class="modal-close" type="button" (click)="closeDeliverModal()" aria-label="Cerrar">✕</button>
       </header>
+      @if(deliverOperation()&&!busy()){<p class="notice info">Puedes reintentar con los mismos datos. Para revisar el estado, cancela y pulsa Actualizar.</p>}
       <form [formGroup]="deliverForm" (ngSubmit)="submitDeliver()">
         <div class="modal-body">
+          @if(error()){<p class="notice danger" role="alert">{{error()}}</p>}
           <p class="modal-intro">
-            Se registrará la salida y entrega final del pedido <strong>{{ target.numeroFormateado }}</strong> para el cliente <strong>{{ target.clienteNombre }}</strong>.
+            Se registrará la entrega final del pedido <strong>{{ target.numeroFormateado }}</strong> para el cliente <strong>{{ target.clienteNombre }}</strong>.
           </p>
 
           <mat-form-field appearance="outline" class="w-full">
-            <mat-label>Nombre de quien retira (opcional)</mat-label>
-            <input matInput formControlName="recibe" placeholder="Ej: Juan Pérez (Titular / Chofer / Encargado)">
+            <mat-label>Quién retira (opcional)</mat-label>
+            <input matInput formControlName="recibe" maxlength="100" [readonly]="busy()||!!deliverOperation()" placeholder="Ej: Juan Pérez (Titular / Chofer / Encargado)">
+            @if (deliverForm.controls.recibe.hasError('pattern')) {<mat-error>Escribe texto sin etiquetas HTML.</mat-error>}
             @if (deliverForm.controls.recibe.hasError('maxlength')) {
               <mat-error>Máximo 100 caracteres</mat-error>
             }
           </mat-form-field>
 
           <mat-form-field appearance="outline" class="w-full">
-            <mat-label>Observación de entrega (opcional)</mat-label>
-            <textarea matInput formControlName="observacion" rows="3" placeholder="Ej: Retirado en camioneta placa ABC-123"></textarea>
+            <mat-label>Observación (opcional)</mat-label>
+            <textarea matInput formControlName="observacion" maxlength="300" [readonly]="busy()||!!deliverOperation()" rows="3" placeholder="Ej: Retirado en camioneta placa ABC-123"></textarea>
+            @if (deliverForm.controls.observacion.hasError('pattern')) {<mat-error>Escribe texto sin etiquetas HTML.</mat-error>}
             @if (deliverForm.controls.observacion.hasError('maxlength')) {
               <mat-error>Máximo 300 caracteres</mat-error>
             }

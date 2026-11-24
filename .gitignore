@@ -68,3 +68,9 @@ Desktop.ini
 **/.github/copilot-instructions.md
 **/.github/instructions/
 **/*.instructions.md
+
+**/*-dependency-audit.json
+
+# Estado temporal de la CLI de Supabase
+/supabase/.temp/
+/supabase/.branches/

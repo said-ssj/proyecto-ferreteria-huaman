@@ -12,7 +12,7 @@ export interface UserProfile {id:number;usuario:string;nombres:string;apellidos:
 export interface LoginResponse {accessToken:string;tokenType:string;usuario:UserProfile;}
 const ROUTE_PERMISSIONS:Record<string,string[]>={
  inicio:['INI.VER'],usuarios:['SEG.USUARIOS'],roles:['SEG.PERMISOS'],bitacora:['SEG.BITACORA'],parametros:['CFG.PARAMETROS'],
- 'comprobantes/series':['CFG.SERIES'],'configuracion/tickets':['CFG.TICKET','CFG.ETIQUETAS'],
+ 'configuracion/xml-pruebas':['VEN.XML'],'comprobantes/series':['CFG.SERIES'],'configuracion/tickets':['CFG.TICKET','CFG.ETIQUETAS'],
  productos:['PRO.VER'],'productos/nuevo':['PRO.GESTIONAR'],'productos/presentaciones':['PRO.PRESENTACIONES','PRO.MAYORISTA'],'productos/medidas':['PRO.MEDIDAS'],
  categorias:['CAT.GESTIONAR','UNI.GESTIONAR'],'categorias/nueva':['CAT.GESTIONAR'],'categorias/unidades/nueva':['UNI.GESTIONAR'],
  proveedores:['PRV.GESTIONAR'],'inventario/apertura':['INV.APERTURA'],clientes:['CLI.VER'],'clientes/nuevo':['CLI.GESTIONAR'],
@@ -32,7 +32,7 @@ export class AuthService {
  readonly message=signal('');readonly busy=signal(false);readonly remaining=signal(0);
  readonly authenticated=computed(()=>!!this.secret()&&!!this.user());
  readonly warning=computed(()=>this.authenticated()&&this.remaining()>0&&this.remaining()<=60000);
- readonly roleName=computed(()=>({ADM:'Administración',VEN:'Ventas',ALM:'Almacén',AYU:'Ayudante'}[this.user()?.rol||'']||this.user()?.rol||''));
+ readonly roleName=computed(()=>({ADM:'Administrador/a',VEN:'Ventas',ALM:'Almacén',AYU:'Ayudante'}[this.user()?.rol||'']||this.user()?.rol||''));
  private lastPing=0;private pinging=false;
  constructor(){const timer=this.document.defaultView?.setInterval(()=>this.tick(),1000);this.destroy.onDestroy(()=>{if(timer)this.document.defaultView?.clearInterval(timer);});}
  token(){return this.secret();}
@@ -53,6 +53,7 @@ export class AuthService {
   path=path.replace(/^\//,'');if(!this.authenticated())return false;
   if(this.user()?.cambioClaveObligatorio)return path==='perfil';
   if(['perfil','preferencias','acceso-denegado'].includes(path))return true;
+  if(['reportes/ventas','reportes/productos','reportes/caja','configuracion/xml-pruebas'].includes(path)&&this.user()?.rol!=='ADM')return false;
   const key=Object.keys(ROUTE_PERMISSIONS).sort((a,b)=>b.length-a.length).find(k=>path===k||path.startsWith(k+'/'));
   return !!key&&ROUTE_PERMISSIONS[key].some(p=>this.has(p));
  }

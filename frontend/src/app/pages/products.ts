@@ -1,3 +1,8 @@
+import {ProductImageEditor} from '../shared/product-image-editor';
+import {ProductImageMetadata} from '../core/product-image.service';
+import {DisplayPreferences} from '../core/display-preferences';
+import {ProductPhoto} from '../shared/product-photo';
+import {ProductViewOptions} from '../shared/product-view-options';
 import {Component,DestroyRef,computed,effect,inject,signal} from '@angular/core';
 import {NgTemplateOutlet} from '@angular/common';
 import {ActivatedRoute,Router,RouterLink} from '@angular/router';
@@ -19,8 +24,10 @@ import {Confirm} from '../shared/confirm';
 interface Field {key:string;label:string;type?:'select'|'check'|'area'|'decimal';required?:boolean;max?:number;options?:{id:string|number;nombre:string}[];}
 const decimal=[Validators.required,Validators.pattern(/^[0-9]{1,12}(?:\.[0-9]{1,6})?$/)];
 function form(fields:Field[]){return new FormGroup<Record<string,FormControl<any>>>(Object.fromEntries(fields.map(f=>[f.key,new FormControl(f.type==='check'?false:'',{nonNullable:true,validators:[...(f.required?[Validators.required]:[]),...(f.max?[Validators.maxLength(f.max)]:[]),...(f.type==='decimal'?decimal:[])]})])));}
-@Component({selector:'app-products',imports:[NgTemplateOutlet,RouterLink,ReactiveFormsModule,MatButtonModule,MatFormFieldModule,MatInputModule,MatSelectModule,MatCheckboxModule,EmptyState,Icon],templateUrl:'./products.html'})
+@Component({selector:'app-products',imports:[ProductPhoto,ProductViewOptions,NgTemplateOutlet,RouterLink,ReactiveFormsModule,MatButtonModule,MatFormFieldModule,MatInputModule,MatSelectModule,MatCheckboxModule,EmptyState,Icon],templateUrl:'./products.html'})
 export class Products {
+ readonly display=inject(DisplayPreferences);
+ editImage(p:Product){if(!this.auth.has('PRO.GESTIONAR'))return;this.dialog.open<ProductImageEditor,{id:number;nombre:string},ProductImageMetadata>(ProductImageEditor,{data:{id:p.id,nombre:p.nombre},width:'580px',maxWidth:'calc(100vw - 24px)'}).afterClosed().pipe(takeUntilDestroyed(this.destroy)).subscribe(meta=>{if(!meta)return;this.rows.update(rows=>rows.map(row=>row.id===p.id?{...row,imagenHash:meta.hash}:row));this.details.update(d=>d&&d.producto.id===p.id?{...d,producto:{...d.producto,imagenHash:meta.hash}}:d);});}
  readonly auth=inject(AuthService);private readonly api=inject(ProductService);private readonly route=inject(ActivatedRoute);private readonly router=inject(Router);private readonly dialog=inject(MatDialog);private readonly destroy=inject(DestroyRef);
  private readonly data=toSignal(this.route.data);private readonly params=toSignal(this.route.paramMap);
  readonly mode=computed(()=>this.data()?.['productMode']||'list');readonly title=computed(()=>this.mode()==='form'?(this.editId()?'Editar producto':'Nuevo producto'):this.mode()==='presentations'?'Presentaciones y precios':this.mode()==='measures'?'Unidades y fraccionamiento':'Productos');

@@ -7,8 +7,9 @@ import {MatInputModule} from '@angular/material/input';
 import {finalize} from 'rxjs';
 import {AuthService,authError} from '../core/auth.service';
 import {Icon} from '../shared/icon';
-@Component({selector:'app-login',imports:[ReactiveFormsModule,MatButtonModule,MatFormFieldModule,MatInputModule,Icon],template:`
-<main class="login-page"><section class="panel login-panel"><div class="brand"><span class="brand-mark">H</span><span>Ferretería<strong>Huamán</strong></span></div><h1>Iniciar sesión</h1><p>Ingresa con tu cuenta de trabajo.</p>
+import {BusinessBrand} from '../shared/business-brand';
+@Component({selector:'app-login',imports:[ReactiveFormsModule,MatButtonModule,MatFormFieldModule,MatInputModule,Icon,BusinessBrand],template:`
+<main class="login-page"><section class="panel login-panel"><div class="brand"><app-business-brand/></div><h1>Iniciar sesión</h1><p>Ingresa con tu cuenta de trabajo.</p>
 @if(auth.message()){<p class="notice info" role="status">{{auth.message()}}</p>}
 @if(error()){<p class="notice danger" role="alert">{{error()}}</p>}
 <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="busy()">

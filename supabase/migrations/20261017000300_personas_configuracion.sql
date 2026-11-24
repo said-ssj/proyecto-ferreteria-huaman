@@ -277,7 +277,7 @@ CREATE TRIGGER no_truncate BEFORE TRUNCATE ON huaman.cliente FOR EACH STATEMENT 
 -- Series de desarrollo: no habilitan emision electronica ni acreditan autorizacion tributaria.
 INSERT INTO serie_comprobante(tipo_comprobante,serie) VALUES ('B','B001'),('F','F001'),('N','N001');
 INSERT INTO parametro_sistema(clave,grupo,valor,valor_defecto,tipo_dato,valor_min,valor_max,descripcion) VALUES
-('NEGOCIO.NOMBRE_COMERCIAL','NEGOCIO','Ferretería Huamán','Ferretería Huamán','TEXTO',NULL,NULL,'Nombre comercial'),
+('NEGOCIO.NOMBRE_COMERCIAL','NEGOCIO','Mi negocio','Mi negocio','TEXTO',NULL,NULL,'Nombre comercial'),
 ('NEGOCIO.RAZON_SOCIAL','NEGOCIO','','','TEXTO',NULL,NULL,'Completar antes de operar'),
 ('NEGOCIO.RUC','NEGOCIO','','','TEXTO',NULL,NULL,'RUC real pendiente de configurar'),
 ('NEGOCIO.DIRECCION','NEGOCIO','','','TEXTO',NULL,NULL,'Dirección real pendiente de configurar'),

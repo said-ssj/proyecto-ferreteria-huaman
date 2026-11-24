@@ -3,7 +3,7 @@ import {HttpClient,HttpParams} from '@angular/common/http';
 import {API_BASE_URL} from './auth.service';
 import {CatalogPage,Category,Unit} from './catalog.service';
 import {EMPTY,expand,reduce} from 'rxjs';
-export interface Product {id:number;codigo:string;nombre:string;descripcion:string|null;categoriaId:number;categoria:string;unidadId:number;unidad:string;admiteFracciones:boolean;incrementoBase:string;minimoVentaBase:string;modoControl:string;stockMinimo:string;ubicacion:string|null;stockActual:string;precioBase:string|null;ultimoCostoCompra:string|null;costoPromedio:string|null;estado:'A'|'I';version:string;}
+export interface Product {imagenHash?:string|null;id:number;codigo:string;nombre:string;descripcion:string|null;categoriaId:number;categoria:string;unidadId:number;unidad:string;admiteFracciones:boolean;incrementoBase:string;minimoVentaBase:string;modoControl:string;stockMinimo:string;ubicacion:string|null;stockActual:string;precioBase:string|null;ultimoCostoCompra:string|null;costoPromedio:string|null;estado:'A'|'I';version:string;}
 export interface Presentation {id:number;productoId:number;nombre:string;unidadVentaId:number|null;unidad:string|null;factorBase:string;esBase:boolean;permiteVenta:boolean;admiteFracciones:boolean;incrementoVenta:string;minimoVenta:string;precioNormal:string;estado:'A'|'I';version:string;}
 export interface Wholesale {id:number;presentacionId:number;cantidadMinima:string;precio:string;estado:'A'|'I';version:string;}
 export interface Barcode {id:number;presentacionId:number;codigo:string;simbologia:string;estado:'A'|'I';version:string;}

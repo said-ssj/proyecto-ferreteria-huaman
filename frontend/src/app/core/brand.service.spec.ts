@@ -1,0 +1,15 @@
+import {TestBed} from '@angular/core/testing';
+import {provideHttpClient,withInterceptors} from '@angular/common/http';
+import {HttpTestingController,provideHttpClientTesting} from '@angular/common/http/testing';
+import {BrandService,businessInitial} from './brand.service';
+describe('Identidad visual compartida',()=>{
+ let brand:BrandService,http:HttpTestingController;
+ const hash='a'.repeat(64),path='/api/identidad-visual/logo/'+hash;
+ beforeEach(()=>{TestBed.configureTestingModule({providers:[provideHttpClient(withInterceptors([(r,next)=>next(r.clone({setHeaders:{Authorization:'Bearer test-session'}}))])),provideHttpClientTesting()]});brand=TestBed.inject(BrandService);http=TestBed.inject(HttpTestingController);});
+ afterEach(()=>http.verify());
+ it('elige una inicial significativa sin depender de tener logo',()=>{expect(businessInitial('Ferretería Huamán')).toBe('H');expect(businessInitial('Panadería Sol')).toBe('S');expect(businessInitial('Almacenes Lima')).toBe('A');expect(businessInitial('')).toBe('N');});
+ it('carga la identidad pública sin transmitir la sesión',()=>{brand.load();const r=http.expectOne('/api/identidad-visual');expect(r.request.headers.has('Authorization')).toBe(false);r.flush({nombre:'Tienda Sol',logoRuta:null,usarLogoComoFavicon:false,version:null});expect(brand.initial()).toBe('S');expect(brand.ready()).toBe(true);});
+ it('solo aplica el logo al favicon cuando se selecciona esa opción',()=>{brand.apply({nombre:'Negocio',logoRuta:path,usarLogoComoFavicon:false,version:null});TestBed.tick();expect(document.querySelector('link[rel="icon"]')?.getAttribute('type')).toBe('image/svg+xml');brand.apply({...brand.state(),usarLogoComoFavicon:true});TestBed.tick();expect(document.querySelector('link[rel="icon"]')?.getAttribute('href')).toBe(path);expect(brand.logoUrl()).toBe(path);});
+ it('rechaza rutas externas y vuelve a la inicial ante un error de imagen',()=>{brand.apply({nombre:'Negocio',logoRuta:'https://example.invalid/image.png',usarLogoComoFavicon:true,version:null});expect(brand.logoUrl()).toBeNull();brand.apply({...brand.state(),logoRuta:path});brand.failed.set(true);TestBed.tick();expect(brand.logoUrl()).toBeNull();expect(document.querySelector('link[rel="icon"]')?.getAttribute('type')).toBe('image/svg+xml');});
+ it('envía la versión y actualiza la identidad solo después de guardar',()=>{brand.apply({nombre:'Negocio',logoRuta:path,usarLogoComoFavicon:true,version:'2026-10-25T10:00:00'});brand.save({imagenBase64:null,quitarLogo:true,usarLogoComoFavicon:false,version:brand.state().version}).subscribe();expect(brand.logoUrl()).toBe(path);const r=http.expectOne('/api/identidad-visual');expect(r.request.method).toBe('PUT');expect(r.request.headers.get('Authorization')).toBe('Bearer test-session');expect(r.request.body.version).toBe('2026-10-25T10:00:00');r.flush({nombre:'Negocio',logoRuta:null,usarLogoComoFavicon:false,version:'2026-10-25T11:00:00'});expect(brand.logoUrl()).toBeNull();expect(brand.state().version).toBe('2026-10-25T11:00:00');});
+});

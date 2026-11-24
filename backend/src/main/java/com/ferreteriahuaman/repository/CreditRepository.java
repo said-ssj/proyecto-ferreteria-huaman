@@ -230,7 +230,7 @@ public class CreditRepository {
               cli.nombre_razon_social cliente,
               cli.tipo_documento "tipoDocumento",
               cli.nro_documento documento,
-              coalesce((select valor from huaman.parametro_sistema where clave='NEGOCIO.NOMBRE_COMERCIAL' and estado='A'), 'Ferretería Huamán') "negocioNombre",
+              coalesce(nullif((select btrim(valor) from huaman.parametro_sistema where clave='NEGOCIO.NOMBRE_COMERCIAL' and estado='A'), ''), 'Mi negocio') "negocioNombre",
               coalesce((select valor from huaman.parametro_sistema where clave='NEGOCIO.RUC' and estado='A'), '') "negocioRuc",
               coalesce((select valor from huaman.parametro_sistema where clave='NEGOCIO.DIRECCION' and estado='A'), '') "negocioDireccion",
               coalesce((select valor from huaman.parametro_sistema where clave='NEGOCIO.TELEFONO' and estado='A'), '') "negocioTelefono"

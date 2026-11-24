@@ -3,7 +3,7 @@ import {TestBed} from '@angular/core/testing';
 import {provideRouter} from '@angular/router';
 import {RouterTestingHarness} from '@angular/router/testing';
 import {By} from '@angular/platform-browser';
-import {of} from 'rxjs';
+import {of,Subject,throwError} from 'rxjs';
 import {routes} from '../app.routes';
 import {AuthService} from '../core/auth.service';
 import {
@@ -19,6 +19,7 @@ import {
 import {Offers} from './offers';
 
 describe('Administración de ofertas conectada', () => {
+  let currentHarness:RouterTestingHarness;
   const summary: OfferSummary = {
     vigentes: 3,
     programadas: 1,
@@ -77,7 +78,11 @@ describe('Administración de ofertas conectada', () => {
     changeState: vi.fn((_id: number, _req: OfferStateRequest) => of(sampleRow))
   };
 
+  afterEach(() => vi.useRealTimers());
+
   beforeEach(() => {
+    vi.useFakeTimers({toFake: ['Date']});
+    vi.setSystemTime(new Date('2026-10-18T12:00:00-05:00'));
     vi.clearAllMocks();
     userProfile.set({id: 1, rol: 'ADM', permisos: ['COC.OFERTAS'], cambioClaveObligatorio: false});
     api.getSummary.mockImplementation(() => of(summary));
@@ -115,7 +120,7 @@ describe('Administración de ofertas conectada', () => {
   });
 
   async function createPage(url: string) {
-    const harness = await RouterTestingHarness.create(url);
+    const harness = await RouterTestingHarness.create(url);currentHarness=harness;
     harness.detectChanges();
     await TestBed.inject(ApplicationRef).whenStable();
     harness.detectChanges();
@@ -244,4 +249,46 @@ describe('Administración de ofertas conectada', () => {
     });
     expect(p.stateTarget()).toBeNull();
   });
+  it('prepara fechas y productos al entrar directamente a nueva oferta',async()=>{
+    const p=await createPage('/ofertas/nueva');
+    expect(p.newOfferForm.controls.fechaInicio.value).toBe('2026-10-18');
+    expect(p.newOfferForm.controls.fechaFin.value).toBe('2026-10-25');
+    expect(api.getAvailableProducts).toHaveBeenCalled();
+    expect(api.getOffers).not.toHaveBeenCalled();
+  });
+  it('utiliza la fecha de Lima cerca de medianoche UTC',async()=>{
+    vi.setSystemTime(new Date('2026-10-19T02:00:00Z'));
+    const p=await createPage('/ofertas/nueva');
+    expect(p.todayString()).toBe('2026-10-18');
+    expect(p.plusDaysString(7)).toBe('2026-10-25');
+  });
+  it('pagina sin salir de los resultados disponibles',async()=>{
+    const p=await createPage('/ofertas');p.total.set(41);p.nextPage(1);
+    expect(api.getOffers).toHaveBeenLastCalledWith(expect.objectContaining({pagina:1}));
+    p.total.set(41);p.nextPage(1);expect(p.page()).toBe(2);
+    p.total.set(41);api.getOffers.mockClear();p.nextPage(1);expect(api.getOffers).not.toHaveBeenCalled();
+    p.nextPage(-1);expect(p.page()).toBe(1);
+  });
+  it('descarta respuestas anteriores cuando cambia el filtro',async()=>{
+    const p=await createPage('/ofertas');const old=new Subject<OfferListResponse>(),latest=new Subject<OfferListResponse>();
+    api.getOffers.mockImplementationOnce(()=>old).mockImplementationOnce(()=>latest);
+    p.searchOffers();p.selectTab('INACTIVA');
+    old.next({items:[sampleRow],total:99,pagina:0,tamano:20});
+    latest.next({items:[],total:0,pagina:0,tamano:20});latest.complete();
+    expect(p.rows()).toEqual([]);expect(p.total()).toBe(0);expect(p.loading()).toBe(false);
+  });
+  it('deshabilita la fecha inicial de una oferta vigente desde el formulario',async()=>{
+    const p=await createPage('/ofertas');p.openEdit(sampleRow);
+    expect(p.editOfferForm.controls.fechaInicio.disabled).toBe(true);
+    p.closeEdit();p.openEdit({...sampleRow,estadoOperativo:'PROGRAMADA'});
+    expect(p.editOfferForm.controls.fechaInicio.enabled).toBe(true);
+  });
+  it('muestra los fallos de actualización dentro del diálogo',async()=>{
+    const p=await createPage('/ofertas');p.openEdit(sampleRow);
+    api.updateOffer.mockImplementationOnce(()=>throwError(()=>({status:409,error:{detail:'La oferta cambió en otra sesión.'}})));
+    p.submitEdit();await TestBed.inject(ApplicationRef).whenStable();
+    currentHarness.detectChanges();
+    expect(currentHarness.routeNativeElement?.querySelector('[aria-label="Editar oferta"] [role="alert"]')?.textContent).toContain('otra sesión');
+  });
+
 });

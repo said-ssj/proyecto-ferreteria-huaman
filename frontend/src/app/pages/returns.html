@@ -1,5 +1,5 @@
 <div class="returns-container">
-  @if (pending() && !busy()) { <p class="alert" role="status">El resultado de la operación no está confirmado. <button mat-stroked-button (click)="retry()">Reintentar la misma operación</button></p> }
+  @if (pending() && !busy() && !approveTarget() && !rejectTarget()) { <p class="notice warning" role="status">El resultado de la operación no está confirmado. <button mat-stroked-button (click)="retry()">Reintentar la misma operación</button></p> }
   <!-- Header -->
   <header class="page-header">
     <div class="header-titles">
@@ -18,11 +18,11 @@
     </div>
     <div class="header-actions">
       @if (mode() === 'list') {
-        <button mat-flat-button color="primary" (click)="setMode('new')">
+        <button mat-flat-button color="primary" (click)="setMode('new')" [disabled]="busy()||!!pending()||!canDevolver()">
           <app-icon name="add"></app-icon> Nueva devolución
         </button>
       } @else {
-        <button mat-stroked-button (click)="setMode('list')">
+        <button mat-stroked-button (click)="setMode('list')" [disabled]="busy()||!!pending()">
           <app-icon name="arrow_back"></app-icon> Volver al listado
         </button>
       }
@@ -30,15 +30,15 @@
   </header>
 
   <!-- Alerts -->
-  @if (error()) {
-    <div class="alert alert-error" role="alert">
+  @if (error() && !approveTarget() && !rejectTarget()) {
+    <div class="notice danger" role="alert">
       <app-icon name="error"></app-icon>
       <span>{{ error() }}</span>
       <button class="alert-close" (click)="error.set('')" aria-label="Cerrar">&times;</button>
     </div>
   }
   @if (success()) {
-    <div class="alert alert-success" role="status">
+    <div class="notice success" role="status">
       <app-icon name="check_circle"></app-icon>
       <span>{{ success() }}</span>
       <button class="alert-close" (click)="success.set('')" aria-label="Cerrar">&times;</button>
@@ -53,40 +53,42 @@
         <div class="stat-icon"><app-icon name="pending_actions"></app-icon></div>
         <div class="stat-data">
           <span class="stat-label">Pendientes de autorización</span>
-          <span class="stat-val">{{ summary().pendientes }}</span>
+          <span class="stat-val">{{summaryReady()?summary().pendientes:'—'}}</span>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon"><app-icon name="task_alt"></app-icon></div>
         <div class="stat-data">
           <span class="stat-label">Aprobadas hoy</span>
-          <span class="stat-val">{{ summary().aprobadasHoy }}</span>
+          <span class="stat-val">{{summaryReady()?summary().aprobadasHoy:'—'}}</span>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon"><app-icon name="payments"></app-icon></div>
         <div class="stat-data">
           <span class="stat-label">Reintegrado hoy</span>
-          <span class="stat-val">S/ {{ summary().montoReintegradoHoy }}</span>
+          <span class="stat-val">S/ {{summaryReady()?summary().montoReintegradoHoy:'—'}}</span>
         </div>
       </div>
     </div>
 
+    @if(summaryError()){<p class="notice warning" role="alert">{{summaryError()}} <button mat-stroked-button [disabled]="busy()||!!pending()" (click)="fetchData()">Reintentar</button></p>}
+    <p class="field-note">El resumen muestra los totales generales del día y las solicitudes pendientes. Los filtros se aplican al listado.</p>
     <!-- Tabs Nav -->
     <nav class="tabs-nav" aria-label="Filtro por estado de devolución">
-      <button class="tab-btn" [class.active]="activeTab() === 'TODAS'" (click)="setTab('TODAS')">
+      <button class="tab-btn" [class.active]="activeTab() === 'TODAS'" [attr.aria-pressed]="activeTab() === 'TODAS'" [disabled]="busy()||!!pending()" (click)="setTab('TODAS')">
         Todas
       </button>
-      <button class="tab-btn" [class.active]="activeTab() === 'PENDIENTE'" (click)="setTab('PENDIENTE')">
+      <button class="tab-btn" [class.active]="activeTab() === 'PENDIENTE'" [attr.aria-pressed]="activeTab() === 'PENDIENTE'" [disabled]="busy()||!!pending()" (click)="setTab('PENDIENTE')">
         Pendientes
         @if (summary().pendientes > 0) {
-          <span class="tab-badge warning">{{ summary().pendientes }}</span>
+          <span class="tab-badge warning">{{summaryReady()?summary().pendientes:'—'}}</span>
         }
       </button>
-      <button class="tab-btn" [class.active]="activeTab() === 'APROBADA'" (click)="setTab('APROBADA')">
+      <button class="tab-btn" [class.active]="activeTab() === 'APROBADA'" [attr.aria-pressed]="activeTab() === 'APROBADA'" [disabled]="busy()||!!pending()" (click)="setTab('APROBADA')">
         Aprobadas
       </button>
-      <button class="tab-btn" [class.active]="activeTab() === 'RECHAZADA'" (click)="setTab('RECHAZADA')">
+      <button class="tab-btn" [class.active]="activeTab() === 'RECHAZADA'" [attr.aria-pressed]="activeTab() === 'RECHAZADA'" [disabled]="busy()||!!pending()" (click)="setTab('RECHAZADA')">
         Rechazadas
       </button>
     </nav>
@@ -94,20 +96,20 @@
     <!-- Filter Bar -->
     <div class="filter-bar">
       <mat-form-field appearance="outline" class="search-field">
-        <mat-label>Buscar por código, comprobante o cliente</mat-label>
-        <input matInput [formControl]="searchControl" placeholder="DV-..., B001-..., DNI o nombre" (keyup.enter)="applyFilters()">
-      </mat-form-field>
+        <mat-label>Buscar devolución</mat-label>
+        <input matInput [formControl]="searchControl" maxlength="100" placeholder="DV-..., B001-..., DNI o nombre" (keyup.enter)="applyFilters()">
+      <mat-error>Revisa el formato y los límites indicados.</mat-error></mat-form-field>
       <mat-form-field appearance="outline" class="date-field">
         <mat-label>Desde</mat-label>
         <input matInput type="date" [formControl]="desdeControl">
-      </mat-form-field>
+      <mat-error>Revisa el formato y los límites indicados.</mat-error></mat-form-field>
       <mat-form-field appearance="outline" class="date-field">
         <mat-label>Hasta</mat-label>
-        <input matInput type="date" [formControl]="hastaControl">
-      </mat-form-field>
+        <input matInput type="date" [formControl]="hastaControl" [min]="desdeControl.value">
+      <mat-error>Revisa el formato y los límites indicados.</mat-error></mat-form-field>
       <div class="filter-actions">
-        <button mat-stroked-button (click)="applyFilters()">Filtrar</button>
-        <button mat-button (click)="clearFilters()">Limpiar</button>
+        <button mat-stroked-button (click)="applyFilters()" [disabled]="loading()||busy()||!!pending()">Filtrar</button>
+        <button mat-button (click)="clearFilters()" [disabled]="loading()||busy()||!!pending()">Limpiar</button>
       </div>
     </div>
 
@@ -115,7 +117,7 @@
     <div class="table-card">
       @if (loading()) {
         <div style="padding: 2rem; text-align: center; color: var(--muted);">Cargando devoluciones...</div>
-      } @else if (rows().length === 0) {
+      } @else if (loaded() && rows().length === 0) {
         <app-empty-state
           icon="assignment_return"
           title="No se encontraron devoluciones"
@@ -161,10 +163,10 @@
                 <td>{{ row.solicitanteNombre }}</td>
                 <td>
                   <div class="table-actions">
-                    <button mat-stroked-button (click)="openDetail(row.id)">Ver detalle</button>
+                    <button mat-stroked-button (click)="openDetail(row.id)" [disabled]="busy()||!!pending()">Ver detalle</button>
                     @if (row.estadoDevolucion === 'PENDIENTE' && isAdmin()) {
-                      <button mat-flat-button color="primary" (click)="openApprove(row)">Autorizar</button>
-                      <button mat-stroked-button color="warn" (click)="openReject(row)">Rechazar</button>
+                      <button mat-flat-button color="primary" (click)="openApprove(row)" [disabled]="busy()||!!pending()||!canDevolver()">Autorizar</button>
+                      <button mat-stroked-button color="warn" (click)="openReject(row)" [disabled]="busy()||!!pending()||!canDevolver()">Rechazar</button>
                     }
                   </div>
                 </td>
@@ -174,6 +176,7 @@
         </table>
       }
     </div>
+    <div class="catalog-pagination"><span>{{total()}} devoluciones · Página {{page()+1}}</span><div><button mat-stroked-button [disabled]="loading()||busy()||!!pending()||page()===0" (click)="nextPage(-1)">Anterior</button><button mat-stroked-button [disabled]="loading()||busy()||!!pending()||(page()+1)*pageSize()>=total()" (click)="nextPage(1)">Siguiente</button></div></div>
   }
 
   <!-- NEW RETURN MODE (P27) -->
@@ -186,9 +189,9 @@
         </div>
         <div class="filter-bar">
           <mat-form-field appearance="outline" class="search-field">
-            <mat-label>Comprobante, código o documento de cliente</mat-label>
-            <input matInput [formControl]="saleSearchControl" placeholder="B001-..., F001-..., DNI o RUC" (keyup.enter)="searchSales()">
-          </mat-form-field>
+            <mat-label>Buscar venta</mat-label>
+            <input matInput [formControl]="saleSearchControl" maxlength="100" placeholder="B001-..., F001-..., DNI o RUC" (keyup.enter)="searchSales()">
+          <mat-error>Revisa el formato y los límites indicados.</mat-error></mat-form-field>
           <button mat-flat-button color="primary" [disabled]="searchingSales()" (click)="searchSales()">
             <app-icon name="search"></app-icon> Buscar venta
           </button>
@@ -224,7 +227,7 @@
                     <td class="amount-text">S/ {{ s.total }}</td>
                     <td>{{ s.mediosPago }}</td>
                     <td>
-                      <button mat-flat-button color="primary" (click)="selectSale(s.idVenta)">
+                      <button mat-flat-button color="primary" (click)="selectSale(s.idVenta)" [disabled]="busy()||!!pending()||loading()">
                         Seleccionar
                       </button>
                     </td>
@@ -244,7 +247,7 @@
         <!-- Step 2: Selected Sale & Lines -->
         <div class="step-header">
           <h2 class="step-title">Paso 2: Productos a devolver</h2>
-          <button mat-stroked-button (click)="unselectSale()">
+          <button mat-stroked-button (click)="unselectSale()" [disabled]="busy()||!!pending()">
             <app-icon name="edit"></app-icon> Cambiar de venta
           </button>
         </div>
@@ -268,10 +271,11 @@
           </div>
         </div>
 
+        <p class="field-note">Las cantidades se expresan en la presentación vendida. El retorno físico se detalla en la unidad base.</p>
         <!-- Items Table -->
         <div class="table-card">
           <div style="display: flex; justify-content: flex-end; padding: 0.75rem 1rem; background: var(--surface-alt); border-bottom: 1px solid var(--line);">
-            <button mat-stroked-button (click)="devolverTodo()">
+            <button mat-stroked-button (click)="devolverTodo()" [disabled]="busy()||!!pending()">
               <app-icon name="done_all"></app-icon> Devolver todo lo disponible
             </button>
           </div>
@@ -296,7 +300,7 @@
                     <strong>{{ item.nombreProducto }}</strong>
                     <div style="font-size: 1rem; color: var(--muted);">{{ item.codigoProducto }} &bull; {{ item.presentacionNombre }}</div>
                   </td>
-                  <td>{{ item.unidadBaseSimbolo }}</td>
+                  <td>{{ item.presentacionNombre }}</td>
                   <td>{{ item.cantidadVendida }}</td>
                   <td>{{ item.yaDevuelto }}</td>
                   <td><strong>{{ item.disponibleDevolver }}</strong></td>
@@ -369,11 +373,11 @@
           <h3 style="margin: 0 0 0.5rem 0; font-size: 1.05rem; font-weight: 700; color: var(--ink);">Motivo y forma de reintegro</h3>
           
           <mat-form-field appearance="outline" class="w-full">
-            <mat-label>Motivo de la devolución (10 a 200 caracteres)</mat-label>
-            <textarea matInput formControlName="motivo" rows="2" placeholder="Explique la razón de la devolución de los artículos"></textarea>
-          </mat-form-field>
+            <mat-label>Motivo de devolución</mat-label><mat-hint>Entre 10 y 200 caracteres, sin etiquetas.</mat-hint>
+            <textarea matInput formControlName="motivo" maxlength="200" rows="2" placeholder="Explique la razón de la devolución de los artículos"></textarea>
+          <mat-error>Revisa el formato y los límites indicados.</mat-error></mat-form-field>
 
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
+          <div class="refund-fields">
             <mat-form-field appearance="outline">
               <mat-label>Forma de reintegro</mat-label>
               <select matNativeControl formControlName="forma">
@@ -384,7 +388,7 @@
                   <option value="DESCUENTO_DEUDA">Descontar de la deuda (saldo: S/ {{ selectedSale()!.saldoDeuda }})</option>
                 }
               </select>
-            </mat-form-field>
+            <mat-error>Revisa el formato y los límites indicados.</mat-error></mat-form-field>
 
             @if (isAdmin()) {
               <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -401,7 +405,9 @@
               <div class="meta-box">
                 <span class="meta-lbl">Caja operativa del día</span>
                 <span class="meta-val">
-                  @if (todayCash()) {
+                  @if(cashLoading()){<span role="status">Consultando caja…</span>}
+                  @else if(cashError()){<span role="alert">{{cashError()}}</span><button mat-stroked-button [disabled]="busy()||!!pending()" (click)="loadTodayCash()">Reintentar caja</button>}
+                  @else if (todayCash()) {
                     Caja N.° {{ todayCash()!.idCaja }} &bull; Estado: {{ todayCash()!.estadoCaja }} &bull; Efectivo disp: S/ {{ todayCash()!.efectivoDisponible }}
                   } @else {
                     <span style="color: var(--danger); font-weight: 700;">No hay caja abierta hoy</span>
@@ -412,23 +418,23 @@
 
             @if (newReturnForm.get('forma')?.value === 'YAPE' || newReturnForm.get('forma')?.value === 'DEBITO') {
               <mat-form-field appearance="outline" class="w-full" style="margin-top: 0.5rem;">
-                <mat-label>Código de operación / referencia de reintegro</mat-label>
-                <input matInput formControlName="referencia" placeholder="Ej: 849204">
-              </mat-form-field>
+                <mat-label>Referencia del reintegro</mat-label><mat-hint>Obligatoria para Yape o débito. Hasta 40 caracteres.</mat-hint>
+                <input matInput formControlName="referencia" maxlength="40" placeholder="Ej: 849204">
+              <mat-error>Revisa el formato y los límites indicados.</mat-error></mat-form-field>
             }
 
             <mat-form-field appearance="outline" class="w-full">
-              <mat-label>Observación de autorización (opcional)</mat-label>
-              <input matInput formControlName="observacion" placeholder="Detalle adicional">
-            </mat-form-field>
+              <mat-label>Observación (opcional)</mat-label>
+              <input matInput formControlName="observacion" maxlength="300" placeholder="Detalle adicional">
+            <mat-error>Revisa el formato y los límites indicados.</mat-error></mat-form-field>
           }
 
-          <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1rem;">
-            <button mat-stroked-button (click)="setMode('list')">Cancelar</button>
+          <div class="form-actions">
+            <button mat-stroked-button (click)="setMode('list')" [disabled]="busy()||!!pending()">Cancelar</button>
             <button
               mat-flat-button
               color="primary"
-              [disabled]="busy() || calculatedRefundTotal() <= 0 || newReturnForm.invalid"
+              [disabled]="busy() || (!pending() && (calculatedRefundTotal() <= 0 || newReturnForm.invalid || (isAdmin() && newReturnForm.controls.autoAprobar.value && (cashLoading() || !todayCash() || todayCash()!.estadoCaja!=='ABIERTA'))))"
               (click)="submitNewReturn()"
             >
               {{ isAdmin() && newReturnForm.get('autoAprobar')?.value ? 'Registrar y autorizar devolución' : 'Enviar para autorización' }}
@@ -495,12 +501,12 @@
           </div>
 
           @if (detailModal()!.cabecera.motivoRechazo) {
-            <div class="alert alert-error">
+            <div class="notice danger">
               <div><strong>Motivo de rechazo:</strong> {{ detailModal()!.cabecera.motivoRechazo }}</div>
             </div>
           }
 
-          <table class="custom-table" style="margin-top: 0.5rem;">
+          <div class="table-card"><table class="custom-table" aria-label="Productos devueltos">
             <thead>
               <tr>
                 <th>Producto</th>
@@ -528,7 +534,7 @@
                 </tr>
               }
             </tbody>
-          </table>
+          </table></div>
         </div>
         <div class="modal-actions">
           <button mat-flat-button (click)="detailModal.set(null)">Cerrar</button>
@@ -554,8 +560,10 @@
             <div>Forma: <strong>{{ formatForma(approveTarget()!.formaReintegro) }}</strong></div>
           </div>
 
-          @if (!todayCash() || todayCash()!.estadoCaja !== 'ABIERTA') {
-            <div class="alert alert-warning">
+          @if(cashLoading()){<p role="status">Consultando caja…</p>}
+          @else if(cashError()){<p class="notice danger" role="alert">{{cashError()}} <button mat-stroked-button [disabled]="busy()||!!pending()" (click)="loadTodayCash()">Reintentar caja</button></p>}
+          @else if (!todayCash() || todayCash()!.estadoCaja !== 'ABIERTA') {
+            <div class="notice warning">
               <app-icon name="warning"></app-icon>
               <span>Abra la caja para autorizar el reintegro. No hay una caja abierta registrada para el día de hoy.</span>
             </div>
@@ -567,22 +575,22 @@
 
           @if (approveTarget()!.formaReintegro === 'YAPE' || approveTarget()!.formaReintegro === 'DEBITO') {
             <mat-form-field appearance="outline" class="w-full">
-              <mat-label>Código de operación / referencia obligatoria</mat-label>
-              <input matInput formControlName="referencia" placeholder="Ej: 948201">
-            </mat-form-field>
+              <mat-label>Referencia del reintegro</mat-label><mat-hint>Obligatoria para Yape o débito. Hasta 40 caracteres.</mat-hint>
+              <input matInput formControlName="referencia" maxlength="40" placeholder="Ej: 948201">
+            <mat-error>Revisa el formato y los límites indicados.</mat-error></mat-form-field>
           }
 
           <mat-form-field appearance="outline" class="w-full">
-            <mat-label>Observación de autorización (opcional)</mat-label>
-            <input matInput formControlName="observacion" placeholder="Detalle adicional">
-          </mat-form-field>
+            <mat-label>Observación (opcional)</mat-label>
+            <input matInput formControlName="observacion" maxlength="300" placeholder="Detalle adicional">
+          <mat-error>Revisa el formato y los límites indicados.</mat-error></mat-form-field>
         </div>
         <div class="modal-actions">
           <button mat-stroked-button [disabled]="busy() || !!pending()" (click)="approveTarget.set(null)">Cancelar</button>
           <button
             mat-flat-button
             color="primary"
-            [disabled]="busy() || !todayCash() || todayCash()!.estadoCaja !== 'ABIERTA'"
+            [disabled]="busy() || (!pending() && (cashLoading() || approveForm.invalid || !todayCash() || todayCash()!.estadoCaja !== 'ABIERTA'))"
             (click)="confirmApprove()"
           >
             Confirmar autorización
@@ -609,9 +617,9 @@
           </div>
 
           <mat-form-field appearance="outline" class="w-full">
-            <mat-label>Motivo de rechazo (10 a 200 caracteres)</mat-label>
-            <textarea matInput formControlName="motivo" rows="3" placeholder="Indique claramente por qué se rechaza la solicitud"></textarea>
-          </mat-form-field>
+            <mat-label>Motivo de rechazo</mat-label><mat-hint>Entre 10 y 200 caracteres, sin etiquetas.</mat-hint>
+            <textarea matInput formControlName="motivo" maxlength="200" rows="3" placeholder="Indique claramente por qué se rechaza la solicitud"></textarea>
+          <mat-error>Revisa el formato y los límites indicados.</mat-error></mat-form-field>
         </div>
         <div class="modal-actions">
           <button mat-stroked-button [disabled]="busy() || !!pending()" (click)="rejectTarget.set(null)">Cancelar</button>

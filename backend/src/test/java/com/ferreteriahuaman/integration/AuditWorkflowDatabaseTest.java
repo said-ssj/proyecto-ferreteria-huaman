@@ -2,7 +2,7 @@ package com.ferreteriahuaman.integration;
 import com.ferreteriahuaman.service.*;import com.ferreteriahuaman.repository.*;import com.ferreteriahuaman.dto.SaleModels.*;import com.ferreteriahuaman.dto.SaleModels.Details;import com.ferreteriahuaman.dto.SaleModels.Line;import com.ferreteriahuaman.dto.CashModels.Open;import com.ferreteriahuaman.dto.ProductModels.*;import com.ferreteriahuaman.dto.PurchaseModels.*;import com.ferreteriahuaman.security.AuthModels.Identity;import com.ferreteriahuaman.security.AuthFailure;import java.math.BigDecimal;import java.time.*;import java.util.*;import org.junit.jupiter.api.*;import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;import org.springframework.beans.factory.annotation.Autowired;import org.springframework.boot.test.context.SpringBootTest;import org.springframework.core.env.Environment;import org.springframework.jdbc.core.JdbcTemplate;import org.springframework.test.context.ActiveProfiles;import org.springframework.transaction.annotation.Transactional;import static org.assertj.core.api.Assertions.*;
 @SpringBootTest @ActiveProfiles({"local","db"}) @Transactional @EnabledIfEnvironmentVariable(named="HUAMAN_DB_INTEGRATION",matches="true")
 class AuditWorkflowDatabaseTest {
- @Autowired ReturnService returns; @Autowired OfferService offers; @Autowired InventoryService inventory;@Autowired SaleService service;@Autowired ProductService products;@Autowired PurchaseService purchases;@Autowired CashService cash;@Autowired CatalogService catalog;@Autowired CustomerService customers;@Autowired AuthStore auth;@Autowired Environment env;@Autowired JdbcTemplate jdbc;Identity actor;long category;String unique;BigDecimal n(String s){return new BigDecimal(s);}
+ @Autowired DispatchService dispatch;@Autowired CreditService credits;@Autowired ReturnService returns; @Autowired OfferService offers; @Autowired InventoryService inventory;@Autowired SaleService service;@Autowired ProductService products;@Autowired PurchaseService purchases;@Autowired CashService cash;@Autowired CatalogService catalog;@Autowired CustomerService customers;@Autowired AuthStore auth;@Autowired Environment env;@Autowired JdbcTemplate jdbc;Identity actor;long category;String unique;BigDecimal n(String s){return new BigDecimal(s);}
  @BeforeEach void setup(){Assumptions.assumeTrue(jdbc.queryForObject("select count(*) from huaman.caja_diaria where estado_caja='ABIERTA' or fecha=timezone('America/Lima',now())::date",Long.class)==0,"No interferir con cajas reales");var u=auth.lockUsername(env.getRequiredProperty("BOOTSTRAP_ADMIN_USUARIO")).orElseThrow();auth.context(u.username(),"INTEGRATION_ROLLBACK");UUID token=UUID.randomUUID();auth.createSession(u.id(),token,LocalDateTime.now(ZoneId.of("America/Lima")));actor=new Identity(u.id(),u.username(),u.nombres(),u.apellidos(),u.rol(),false,auth.permissions(u.id()),token,OffsetDateTime.now().plusMinutes(30));unique="INTEGRACION_"+UUID.randomUUID().toString().substring(0,8).toUpperCase();category=catalog.createCategory(actor,"INTEGRATION_ROLLBACK",new com.ferreteriahuaman.dto.CatalogModels.CategoryInput(unique,null,null)).id();cash.open(actor,"INTEGRATION_ROLLBACK",new Open(n("0"),null,UUID.randomUUID()));jdbc.update("update huaman.parametro_sistema set valor='Negocio de integración' where clave='NEGOCIO.RAZON_SOCIAL'");jdbc.update("update huaman.parametro_sistema set valor='20123456789' where clave='NEGOCIO.RUC'");jdbc.update("update huaman.parametro_sistema set valor='Dirección temporal 123' where clave='NEGOCIO.DIRECCION'");}
  Product product(String mode,String unitCode){long unit=jdbc.queryForObject("select id_unidad from huaman.unidad_medida where codigo_sunat=?",Long.class,unitCode);return products.create(actor,"INTEGRATION_ROLLBACK",new ProductInput(unique+mode.substring(0,1),"Producto "+mode,null,category,unit,true,n("0.001"),n("0.001"),mode,n("0"),null,"Base",n("10"),null));}
  long presentation(Product p){return products.details(actor,p.id()).presentaciones().getFirst().id();}
@@ -74,4 +74,63 @@ class AuditWorkflowDatabaseTest {
    assertThatThrownBy(()->offers.update(actor,"INTEGRATION_ROLLBACK",created.id(),new com.ferreteriahuaman.dto.OfferModels.OfferUpdateRequest("Sin versión",n("0.60"),day,day.plusDays(2),null))).isInstanceOf(AuthFailure.class);
    assertThatThrownBy(()->offers.changeState(actor,"INTEGRATION_ROLLBACK",created.id(),new com.ferreteriahuaman.dto.OfferModels.OfferStateRequest("I",created.version().minusSeconds(1)))).isInstanceOf(AuthFailure.class);
  }
+ // Full service boundaries, using the same contracts as the HTTP controllers.
+ Product receivedFromPurchaseOrder(){
+   var p=product("GRANEL","KGM");long pres=presentation(p);
+   String ruc="20"+String.format("%09d",Math.floorMod(UUID.randomUUID().getLeastSignificantBits(),1000000000L));
+   long supplier=purchases.saveSupplier(actor,"INTEGRATION_ROLLBACK",null,new SupplierInput(ruc,unique,null,null,null,null,null)).id();
+   var order=purchases.save(actor,"INTEGRATION_ROLLBACK",com.ferreteriahuaman.repository.PurchaseRepository.Kind.ORDER,null,new DocumentInput(supplier,LocalDate.now(ZoneId.of("America/Lima")),null,null,null,null,null,UUID.randomUUID()));
+   order=purchases.saveLine(actor,"INTEGRATION_ROLLBACK",com.ferreteriahuaman.repository.PurchaseRepository.Kind.ORDER,order.documento().id(),null,new LineInput(p.id(),pres,n("10"),n("4"),null,null,null,order.documento().version()));
+   order=purchases.process(actor,"INTEGRATION_ROLLBACK",com.ferreteriahuaman.repository.PurchaseRepository.Kind.ORDER,order.documento().id(),new Action(UUID.randomUUID(),order.documento().version(),null),false);
+   var receipt=purchases.save(actor,"INTEGRATION_ROLLBACK",com.ferreteriahuaman.repository.PurchaseRepository.Kind.RECEIPT,null,new DocumentInput(supplier,LocalDate.now(ZoneId.of("America/Lima")),null,order.documento().id(),unique,null,null,UUID.randomUUID()));
+   receipt=purchases.saveLine(actor,"INTEGRATION_ROLLBACK",com.ferreteriahuaman.repository.PurchaseRepository.Kind.RECEIPT,receipt.documento().id(),null,new LineInput(p.id(),pres,n("10"),n("4"),order.lineas().getFirst().id(),"GRANEL",null,receipt.documento().version()));
+   UUID key=UUID.randomUUID();var action=new Action(key,receipt.documento().version(),null);
+   purchases.process(actor,"INTEGRATION_ROLLBACK",com.ferreteriahuaman.repository.PurchaseRepository.Kind.RECEIPT,receipt.documento().id(),action,false);
+   purchases.process(actor,"INTEGRATION_ROLLBACK",com.ferreteriahuaman.repository.PurchaseRepository.Kind.RECEIPT,receipt.documento().id(),action,false);
+   assertThat(products.details(actor,p.id()).producto().stockActual()).isEqualTo("10.000000");
+   assertThat(products.details(actor,p.id()).producto().costoPromedio()).isEqualTo("4.000000");
+   assertThat(purchases.details(com.ferreteriahuaman.repository.PurchaseRepository.Kind.ORDER,order.documento().id()).documento().estado()).isEqualTo("COMPLETA");
+   return p;
+ }
+ @Test void purchaseReceiptSaleDispatchReturnAndCashCloseStayConsistent(){
+   var p=receivedFromPurchaseOrder();
+   var draft=service.create(actor,"INTEGRATION_ROLLBACK",new Create(null,"N",false,UUID.randomUUID(),List.of(new Line(presentation(p),n("2"),1))));
+   var sale=service.confirm(actor,"INTEGRATION_ROLLBACK",id(draft),request(draft,List.of(pay("EFECTIVO","20","20",null)),List.of()));
+   long dispatchId=jdbc.queryForObject("select id_despacho from huaman.despacho where id_venta=?",Long.class,id(sale));
+   assertThat(dispatch.detail(actor,dispatchId).despacho().estado()).isEqualTo("PENDIENTE");
+   var prepare=new com.ferreteriahuaman.dto.DispatchModels.PrepareRequest(UUID.randomUUID(),"Contenido comprobado en prueba");
+   dispatch.preparar(actor,"INTEGRATION_ROLLBACK",dispatchId,prepare);dispatch.preparar(actor,"INTEGRATION_ROLLBACK",dispatchId,prepare);
+   var deliver=new com.ferreteriahuaman.dto.DispatchModels.DeliverRequest(UUID.randomUUID(),"Receptor de integración","Entrega completa de prueba");
+   dispatch.entregar(actor,"INTEGRATION_ROLLBACK",dispatchId,deliver);dispatch.entregar(actor,"INTEGRATION_ROLLBACK",dispatchId,deliver);
+   assertThat(products.details(actor,p.id()).producto().stockActual()).isEqualTo("8.000000");
+   var req=returnRequest(sale,true,List.of(),"1");var result=returns.solicitar(actor,"INTEGRATION_ROLLBACK",req);
+   assertThat(returns.solicitar(actor,"INTEGRATION_ROLLBACK",req).cabecera().id()).isEqualTo(result.cabecera().id());
+   assertThat(products.details(actor,p.id()).producto().stockActual()).isEqualTo("9.000000");
+   assertThat(purchases.movements(actor,p.id(),0,20).total()).isEqualTo(3);
+   var current=cash.current().caja();assertThat(current.efectivo()).isEqualTo("10.00");
+   cash.close(actor,"INTEGRATION_ROLLBACK",current.id(),new com.ferreteriahuaman.dto.CashModels.Close(n("10"),n("0"),n("0"),"Cierre de integración",UUID.randomUUID()));
+   assertThat(cash.current().caja().estado()).isEqualTo("CERRADA");assertThat(cash.current().caja().diferenciaEfectivo()).isEqualTo("0.00");
+   jdbc.execute("set constraints all immediate");
+ }
+ @Test void purchasedStockCreditSaleAndRepeatedPaymentsCloseTheAccountAndCash(){
+   var p=receivedFromPurchaseOrder();String doc=String.format("%08d",Math.floorMod(UUID.randomUUID().getLeastSignificantBits(),89999999L)+10000000L);
+   var client=customers.save(actor,"INTEGRATION_ROLLBACK",null,new com.ferreteriahuaman.dto.CustomerModels.Input("DNI",doc,"Cliente de integración "+unique,null,null,null,null));
+   customers.credit(actor,"INTEGRATION_ROLLBACK",client.id(),new com.ferreteriahuaman.dto.CustomerModels.Credit(n("500"),client.version()));
+   var draft=create(presentation(p),"2",1,"N",client.id());
+   service.confirm(actor,"INTEGRATION_ROLLBACK",id(draft),request(draft,List.of(pay("CREDITO","20",null,null)),List.of()));
+   var statement=credits.statement(actor,client.id());assertThat(statement.cliente().deudaTotal()).isEqualByComparingTo("20");
+   long account=((Number)statement.cuentas().getFirst().get("id")).longValue();
+   var first=new com.ferreteriahuaman.dto.CreditModels.RegisterPayment(account,n("5"),"EFECTIVO",UUID.randomUUID(),null,null,null,"Abono de integración");
+   var receipt=credits.registerPayment(actor,"INTEGRATION_ROLLBACK",first);assertThat(credits.registerPayment(actor,"INTEGRATION_ROLLBACK",first).id()).isEqualTo(receipt.id());
+   assertThat(credits.statement(actor,client.id()).cliente().deudaTotal()).isEqualByComparingTo("15");
+   credits.registerPayment(actor,"INTEGRATION_ROLLBACK",new com.ferreteriahuaman.dto.CreditModels.RegisterPayment(account,n("15"),"EFECTIVO",UUID.randomUUID(),null,null,null,"Liquidación de integración"));
+   assertThat(credits.statement(actor,client.id()).cliente().deudaTotal()).isEqualByComparingTo("0");
+   assertThat(products.details(actor,p.id()).producto().stockActual()).isEqualTo("8.000000");
+   var current=cash.current().caja();assertThat(current.efectivo()).isEqualTo("20.00");
+   cash.close(actor,"INTEGRATION_ROLLBACK",current.id(),new com.ferreteriahuaman.dto.CashModels.Close(n("20"),n("0"),n("0"),"Cierre de integración",UUID.randomUUID()));
+   assertThat(cash.current().caja().diferenciaEfectivo()).isEqualTo("0.00");jdbc.execute("set constraints all immediate");
+ }
+ @org.springframework.test.context.transaction.AfterTransaction
+ void verifiesFixtureWasRolledBack(){if(unique!=null)assertThat(jdbc.queryForObject("select count(*) from huaman.categoria where nombre=?",Long.class,unique)).isZero();}
+
 }

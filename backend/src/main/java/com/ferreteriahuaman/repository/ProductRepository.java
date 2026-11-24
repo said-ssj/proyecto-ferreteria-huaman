@@ -13,20 +13,25 @@ import org.springframework.stereotype.Repository;
 public class ProductRepository {
  private final JdbcTemplate jdbc;
  public ProductRepository(JdbcTemplate jdbc){this.jdbc=jdbc;}
- private static final String PRODUCT="""
+ private static final String PRODUCT_SELECT="""
  select p.*,c.nombre categoria,u.abreviatura unidad,coalesce(p.fecmod,p.feccre) version,
- (select precio_normal from huaman.presentacion_producto b where b.id_producto=p.id_producto and b.es_base and b.estado='A') precio_base
- from huaman.producto p join huaman.categoria c on c.id_categoria=p.id_categoria join huaman.unidad_medida u on u.id_unidad=p.id_unidad
+ (select precio_normal from huaman.presentacion_producto b where b.id_producto=p.id_producto and b.es_base and b.estado='A') precio_base,
+ (select sha256 from huaman.producto_imagen i where i.id_producto=p.id_producto) imagen_hash
  """;
+ private static final String PRODUCT_JOINS=" join huaman.categoria c on c.id_categoria=p.id_categoria join huaman.unidad_medida u on u.id_unidad=p.id_unidad ";
+ private static final String PRODUCT=PRODUCT_SELECT+" from huaman.producto p"+PRODUCT_JOINS;
  private String decimal(ResultSet r,String name)throws SQLException{var v=r.getBigDecimal(name);return v==null?null:v.toPlainString();}
- private Product product(ResultSet r,int n,boolean costs)throws SQLException{return new Product(r.getLong("id_producto"),r.getString("codigo"),r.getString("nombre"),r.getString("descripcion"),r.getLong("id_categoria"),r.getString("categoria"),r.getLong("id_unidad"),r.getString("unidad"),r.getBoolean("admite_fracciones"),decimal(r,"incremento_base"),decimal(r,"minimo_venta_base"),r.getString("modo_control"),decimal(r,"stock_minimo"),r.getString("ubicacion"),decimal(r,"stock_actual"),decimal(r,"precio_base"),costs?decimal(r,"ultimo_costo_compra"):null,costs?decimal(r,"costo_promedio"):null,r.getString("estado"),r.getObject("version",LocalDateTime.class));}
+ private Product product(ResultSet r,int n,boolean costs)throws SQLException{return new Product(r.getLong("id_producto"),r.getString("codigo"),r.getString("nombre"),r.getString("descripcion"),r.getLong("id_categoria"),r.getString("categoria"),r.getLong("id_unidad"),r.getString("unidad"),r.getBoolean("admite_fracciones"),decimal(r,"incremento_base"),decimal(r,"minimo_venta_base"),r.getString("modo_control"),decimal(r,"stock_minimo"),r.getString("ubicacion"),decimal(r,"stock_actual"),decimal(r,"precio_base"),costs?decimal(r,"ultimo_costo_compra"):null,costs?decimal(r,"costo_promedio"):null,r.getString("estado"),r.getObject("version",LocalDateTime.class),r.getString("imagen_hash"));}
  public Page<Product> list(String search,String state,Long category,int page,int size,boolean costs){
   String esc=Character.toString(92),q="%"+search.replace(esc,esc+esc).replace("%",esc+"%").replace("_",esc+"_")+"%";
   String filter=" where (p.nombre ilike ? or p.codigo ilike ? or exists(select 1 from huaman.presentacion_producto v join huaman.codigo_presentacion b on b.id_presentacion=v.id_presentacion where v.id_producto=p.id_producto and b.estado='A' and v.estado='A' and b.codigo ilike ?)) and (?='' or p.estado=?) and (?::bigint is null or p.id_categoria=?)";
   var args=new Object[]{q,q,q,state,state,category,category};
   long total=Objects.requireNonNull(jdbc.queryForObject("select count(*) from huaman.producto p"+filter,Long.class,args));
   var params=new ArrayList<Object>(Arrays.asList(args));params.add(size);params.add((long)page*size);
-  return new Page<>(jdbc.query(PRODUCT+filter+" order by lower(p.nombre),p.id_producto limit ? offset ?",(r,n)->product(r,n,costs),params.toArray()),total,page,size);
+  // Both joins are mandatory FK-to-PK relationships, so each product has exactly
+  // one category/unit. Page products first to avoid joining the whole catalog.
+  String selection="(select p.* from huaman.producto p"+filter+" order by lower(p.nombre),p.id_producto limit ? offset ?) p";
+  return new Page<>(jdbc.query(PRODUCT_SELECT+" from "+selection+PRODUCT_JOINS+" order by lower(p.nombre),p.id_producto",(r,n)->product(r,n,costs),params.toArray()),total,page,size);
  }
  public Optional<Product> get(long id,boolean lock,boolean costs){return jdbc.query(PRODUCT+" where p.id_producto=?"+(lock?" for update of p":""),(r,n)->product(r,n,costs),id).stream().findFirst();}
  public long create(ProductInput i){return Objects.requireNonNull(jdbc.queryForObject("""

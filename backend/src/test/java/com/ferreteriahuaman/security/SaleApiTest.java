@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(SaleController.class) @ActiveProfiles("db")
 @Import({ApiSecurityConfig.class,SecurityConfig.class,ApiExceptionHandler.class})
 class SaleApiTest {
- @Autowired MockMvc mvc;@MockBean AuthService auth;@MockBean SaleService service;
+ @Autowired MockMvc mvc;@MockBean AuthService auth;@MockBean SaleService service;@MockBean com.ferreteriahuaman.service.PosCustomerService customers;
  void login(String...permissions){when(auth.authenticate(anyString(),anyString())).thenReturn(new Identity(1,"prueba","Nombre","Apellido","AYU",false,Set.of(permissions),UUID.randomUUID(),OffsetDateTime.now().plusMinutes(30)));}
  @Test void anonymousCannotReadSales()throws Exception{mvc.perform(get("/api/ventas/opciones")).andExpect(status().isUnauthorized());}
  @Test void historyPermissionDoesNotGrantSelling()throws Exception{login("VEN.HISTORIAL");mvc.perform(post("/api/ventas/borradores").header("Authorization","Bearer test").contentType("application/json").content("{}")).andExpect(status().isForbidden());verifyNoInteractions(service);}

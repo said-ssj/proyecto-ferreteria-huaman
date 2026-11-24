@@ -1,0 +1,13 @@
+package com.ferreteriahuaman.security;
+import com.ferreteriahuaman.controller.AuditController;import com.ferreteriahuaman.service.*;import com.ferreteriahuaman.security.AuthModels.Identity;import com.ferreteriahuaman.exception.ApiExceptionHandler;import java.time.*;import java.util.*;import org.junit.jupiter.api.*;import org.springframework.beans.factory.annotation.Autowired;import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;import org.springframework.boot.test.mock.mockito.MockBean;import org.springframework.context.annotation.Import;import org.springframework.test.context.ActiveProfiles;import org.springframework.test.web.servlet.MockMvc;import static org.mockito.Mockito.*;import static org.mockito.ArgumentMatchers.*;import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+@WebMvcTest(AuditController.class) @ActiveProfiles("db") @Import({ApiSecurityConfig.class,SecurityConfig.class,ApiExceptionHandler.class})
+class AuditApiTest {
+ @Autowired MockMvc mvc;@MockBean AuthService auth;@MockBean AuditService service;
+ void login(String...p){when(auth.authenticate(anyString(),anyString())).thenReturn(new Identity(1,"admin.test","N","A","ADM",false,Set.of(p),UUID.randomUUID(),OffsetDateTime.now().plusHours(1)));}
+ @Test void anonymousCannotRead()throws Exception{mvc.perform(get("/api/bitacora")).andExpect(status().isUnauthorized());}
+ @Test void permissionRequiredForAllReads()throws Exception{login("SEG.USUARIOS");for(String p:List.of("/api/bitacora","/api/bitacora/opciones","/api/bitacora/1"))mvc.perform(get(p).header("Authorization","Bearer test")).andExpect(status().isForbidden());verifyNoInteractions(service);}
+ @Test void authorizedListUsesDefaults()throws Exception{login("SEG.BITACORA");mvc.perform(get("/api/bitacora").header("Authorization","Bearer test")).andExpect(status().isOk());verify(service).list(any(),argThat(f->f.pagina()==0&&f.tamano()==25));}
+ @Test void invalidDateIsRejected()throws Exception{login("SEG.BITACORA");mvc.perform(get("/api/bitacora?desde=not-a-date").header("Authorization","Bearer test")).andExpect(status().isBadRequest());verifyNoInteractions(service);}
+ @Test void eventCannotBeDeleted()throws Exception{login("SEG.BITACORA");mvc.perform(delete("/api/bitacora/1").header("Authorization","Bearer test")).andExpect(status().isForbidden());verifyNoInteractions(service);}
+ @Test void eventCannotBeWritten()throws Exception{login("SEG.BITACORA");mvc.perform(post("/api/bitacora").header("Authorization","Bearer test").contentType("application/json").content("{}")).andExpect(status().isForbidden());verifyNoInteractions(service);}
+}

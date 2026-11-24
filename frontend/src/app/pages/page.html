@@ -26,6 +26,8 @@
 <section class="panel"><div class="filter-grid"><app-field [field]="{label:'Formato de impresión',type:'select',options:['Ticket de 80 mm','A4']}"/><button mat-stroked-button disabled><app-icon name="print"/>Imprimir</button><button mat-stroked-button disabled><app-icon name="download"/>Descargar XML</button></div><div class="document-empty"><app-empty-state icon="receipt_long" title="Selecciona una venta" description="Aquí se mostrará el comprobante de la venta seleccionada."/>@if(auth.can('ventas/historial')){<a mat-stroked-button routerLink="/ventas/historial">Ir al historial de ventas</a>}</div></section>
 }
 @case('themes'){
+<app-display-settings/>
+@if(auth.has('CFG.PARAMETROS')&&auth.user()?.rol==='ADM'){<p><a mat-stroked-button routerLink="/parametros">Configurar logo e icono de la pestaña</a></p>}
 <div class="theme-grid" role="group" aria-label="Tema de la interfaz">@for(theme of themes;track theme.id){<button class="theme-card" [class.selected]="appearance.current()===theme.id" [attr.aria-pressed]="appearance.current()===theme.id" (click)="appearance.set(theme.id)"><div class="swatches">@for(color of theme.colors;track $index){<span [style.background]="color"></span>}</div><div class="theme-copy"><strong>{{theme.name}}</strong><p>{{theme.description}}</p><span class="theme-choice"><app-icon [name]="appearance.current()===theme.id?'radio_button_checked':'radio_button_unchecked'"/>{{appearance.current()===theme.id?'Tema seleccionado':'Usar este tema'}}</span></div></button>}</div>
 }
 @case('library'){

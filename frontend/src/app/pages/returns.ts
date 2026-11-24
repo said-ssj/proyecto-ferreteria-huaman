@@ -1,12 +1,12 @@
 import {Modal} from '../shared/modal';
-import {Component,DestroyRef,computed,effect,inject,signal} from '@angular/core';
+import {Component,DestroyRef,computed,inject,signal} from '@angular/core';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {FormControl,FormGroup,ReactiveFormsModule,Validators} from '@angular/forms';
 import {ActivatedRoute,Router} from '@angular/router';
 import {MatButtonModule} from '@angular/material/button';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
-import {finalize} from 'rxjs';
+import {finalize,Subscription} from 'rxjs';
 import {AuthService,authError} from '../core/auth.service';
 import {
   ApproveRequest,
@@ -46,6 +46,9 @@ export class Returns {
   private readonly route = inject(ActivatedRoute);
   private readonly destroy = inject(DestroyRef);
 
+  private listRequest?:Subscription;private summaryRequest?:Subscription;private salesRequest?:Subscription;private saleRequest?:Subscription;private cashRequest?:Subscription;
+  readonly summaryReady=signal(false);readonly summaryError=signal('');readonly cashLoading=signal(false);readonly cashError=signal('');readonly loaded=signal(false);
+  readonly applied=signal({buscar:'',desde:'',hasta:''});
   readonly isAdmin = computed(() => this.auth.user()?.rol === 'ADM');
   readonly canDevolver = computed(() => this.auth.has('VEN.DEVOLVER'));
 
@@ -85,31 +88,31 @@ export class Returns {
   readonly todayCash = signal<CashOption | null>(null);
 
   // Filter form controls
-  readonly searchControl = new FormControl('', {nonNullable: true});
+  readonly searchControl = new FormControl('', {nonNullable: true,validators:[Validators.maxLength(100)]});
   readonly desdeControl = new FormControl('', {nonNullable: true});
   readonly hastaControl = new FormControl('', {nonNullable: true});
 
   // Sale search control
-  readonly saleSearchControl = new FormControl('', {nonNullable: true});
+  readonly saleSearchControl = new FormControl('', {nonNullable: true,validators:[Validators.maxLength(100)]});
 
   // New return form
   readonly newReturnForm = new FormGroup({
-    motivo: new FormControl('', [Validators.required, Validators.minLength(10), Validators.maxLength(200)]),
+    motivo: new FormControl('', [Validators.required, Validators.minLength(10), Validators.maxLength(200),Validators.pattern(/^[^<>]*$/)]),
     forma: new FormControl<'EFECTIVO' | 'YAPE' | 'DEBITO' | 'DESCUENTO_DEUDA'>('EFECTIVO', [Validators.required]),
     autoAprobar: new FormControl(true),
-    referencia: new FormControl(''),
-    observacion: new FormControl('')
+    referencia: new FormControl('',[Validators.maxLength(40)]),
+    observacion: new FormControl('',[Validators.maxLength(300),Validators.pattern(/^[^<>]*$/)])
   });
 
   // Approve form
   readonly approveForm = new FormGroup({
-    referencia: new FormControl(''),
-    observacion: new FormControl('')
+    referencia: new FormControl('',[Validators.maxLength(40)]),
+    observacion: new FormControl('',[Validators.maxLength(300),Validators.pattern(/^[^<>]*$/)])
   });
 
   // Reject form
   readonly rejectForm = new FormGroup({
-    motivo: new FormControl('', [Validators.required, Validators.minLength(10), Validators.maxLength(200)])
+    motivo: new FormControl('', [Validators.required, Validators.minLength(10), Validators.maxLength(200),Validators.pattern(/^[^<>]*$/)])
   });
 
   readonly calculatedRefundTotal = computed(() => {
@@ -119,7 +122,7 @@ export class Returns {
     let sum = 0;
     for (const item of sale.items) {
       const q = quantities[item.idDetalleVenta] || 0;
-      if (q > 0) {
+      if (Number.isFinite(q) && q > 0) {
         sum += q * +item.precioUnitario;
       }
     }
@@ -129,19 +132,19 @@ export class Returns {
   constructor() {
     const routeMode = this.route.snapshot.data['returnMode'];
     if (routeMode === 'new') {
-      this.mode.set('new');
-    }
-
-    this.fetchData();
-    this.loadTodayCash();
+      this.setMode('new');
+    } else this.fetchData();
   }
 
   setMode(m: 'list' | 'new'): void {
     if (this.pending() || this.busy()) return;
+    if(m==='new'&&!this.canDevolver())return;
     this.mode.set(m);
     this.error.set('');
     this.success.set('');
     if (m === 'list') {
+      this.unselectSale();this.newReturnForm.reset({motivo:'',forma:'EFECTIVO',autoAprobar:true,referencia:'',observacion:''});
+      if(this.route.snapshot.data['returnMode']==='new')void this.router.navigate(['/devoluciones']);
       this.fetchData();
     } else {
       this.loadTodayCash();
@@ -152,41 +155,49 @@ export class Returns {
   }
 
   setTab(tab: 'TODAS' | 'PENDIENTE' | 'APROBADA' | 'RECHAZADA'): void {
+    if(this.pending()||this.busy())return;
     this.activeTab.set(tab);
     this.page.set(0);
     this.fetchData();
   }
 
   applyFilters(): void {
+    if(this.pending()||this.busy())return;
+    const desde=this.desdeControl.value,hasta=this.hastaControl.value;
+    if(this.searchControl.invalid||(desde&&hasta&&desde>hasta)){this.error.set('Revisa la búsqueda (máximo 100 caracteres) y el orden de las fechas.');return;}
+    this.applied.set({buscar:this.searchControl.value.trim(),desde,hasta});
     this.page.set(0);
     this.fetchData();
   }
 
   clearFilters(): void {
+    if(this.pending()||this.busy())return;
     this.searchControl.setValue('');
     this.desdeControl.setValue('');
     this.hastaControl.setValue('');
-    this.page.set(0);
-    this.fetchData();
+    this.applyFilters();
   }
 
+  nextPage(delta:number){const next=this.page()+delta;if(this.loading()||this.busy()||this.pending()||next<0||next*this.pageSize()>=this.total())return;this.page.set(next);this.fetchData();}
+
   fetchData(): void {
-    this.loading.set(true);
+    this.listRequest?.unsubscribe();this.summaryRequest?.unsubscribe();
+    this.loading.set(true);this.loaded.set(false);this.summaryError.set('');
     this.error.set('');
 
-    this.api.getSummary().pipe(
+    this.summaryRequest=this.api.getSummary().pipe(
       takeUntilDestroyed(this.destroy)
     ).subscribe({
-      next: s => this.summary.set(s),
-      error: () => {}
+      next: s => {this.summary.set(s);this.summaryReady.set(true);},
+      error: () => {this.summaryReady.set(false);this.summaryError.set('No se pudo cargar el resumen.');}
     });
 
     const estadoParam = this.activeTab() === 'TODAS' ? '' : this.activeTab();
-    this.api.getReturns({
+    this.listRequest=this.api.getReturns({
       estado: estadoParam,
-      buscar: this.searchControl.value.trim() || undefined,
-      desde: this.desdeControl.value || undefined,
-      hasta: this.hastaControl.value || undefined,
+      buscar: this.applied().buscar || undefined,
+      desde: this.applied().desde || undefined,
+      hasta: this.applied().hasta || undefined,
       pagina: this.page(),
       tamano: this.pageSize()
     }).pipe(
@@ -194,26 +205,30 @@ export class Returns {
       finalize(() => this.loading.set(false))
     ).subscribe({
       next: res => {
-        this.rows.set(res.items);
+        this.rows.set(res.items);this.loaded.set(true);
         this.total.set(res.total);
       },
       error: err => {
+        this.rows.set([]);this.total.set(0);
         this.error.set(authError(err));
       }
     });
   }
 
   loadTodayCash(): void {
-    this.api.getTodayCash().pipe(
+    this.cashRequest?.unsubscribe();this.todayCash.set(null);this.cashError.set('');this.cashLoading.set(true);
+    this.cashRequest=this.api.getTodayCash().pipe(
       takeUntilDestroyed(this.destroy)
     ).subscribe({
-      next: c => this.todayCash.set(c),
-      error: () => {}
+      next: c => {this.todayCash.set(c);this.cashLoading.set(false);},
+      error: () => {this.cashLoading.set(false);this.cashError.set('No se pudo consultar la caja. Inténtalo otra vez.');}
     });
   }
 
   openDetail(id: number): void {
-    this.api.getReturnDetail(id).pipe(
+    if(this.pending()||this.busy()||this.detailModal()||this.approveTarget()||this.rejectTarget())return;
+    this.busy.set(true);this.error.set('');
+    this.api.getReturnDetail(id).pipe(finalize(()=>this.busy.set(false)),
       takeUntilDestroyed(this.destroy)
     ).subscribe({
       next: d => this.detailModal.set(d),
@@ -223,7 +238,8 @@ export class Returns {
 
   openApprove(row: ReturnRow): void {
     if (this.pending() || this.busy()) return;
-    this.approveTarget.set(row);
+    if(!this.isAdmin()||!this.canDevolver()||row.estadoDevolucion!=='PENDIENTE'||this.rejectTarget()||this.detailModal())return;
+    this.error.set('');this.approveTarget.set(row);
     this.approveForm.reset();
     this.loadTodayCash();
   }
@@ -232,10 +248,12 @@ export class Returns {
     if (this.busy()) return;
     if (this.pending()) { this.retry(); return; }
     const target = this.approveTarget();
-    if (!target) return;
+    if (!target||!this.isAdmin()||!this.canDevolver()||target.estadoDevolucion!=='PENDIENTE') return;
 
+    if(this.approveForm.invalid){this.approveForm.markAllAsTouched();this.error.set('Revisa la referencia y la observación.');return;}
+    if(['YAPE','DEBITO'].includes(target.formaReintegro)&&!this.approveForm.controls.referencia.value?.trim()){this.error.set('Ingresa la referencia del reintegro.');return;}
     const cash = this.todayCash();
-    if (!cash || cash.estadoCaja !== 'ABIERTA') {
+    if (this.cashLoading()||!cash || cash.estadoCaja !== 'ABIERTA') {
       this.error.set('Se requiere una caja abierta para autorizar la devolución');
       return;
     }
@@ -258,7 +276,8 @@ export class Returns {
 
   openReject(row: ReturnRow): void {
     if (this.pending() || this.busy()) return;
-    this.rejectTarget.set(row);
+    if(!this.isAdmin()||!this.canDevolver()||row.estadoDevolucion!=='PENDIENTE'||this.approveTarget()||this.detailModal())return;
+    this.error.set('');this.rejectTarget.set(row);
     this.rejectForm.reset();
   }
 
@@ -266,7 +285,7 @@ export class Returns {
     if (this.busy()) return;
     if (this.pending()) { this.retry(); return; }
     const target = this.rejectTarget();
-    if (!target) return;
+    if (!target||!this.isAdmin()||!this.canDevolver()||target.estadoDevolucion!=='PENDIENTE') return;
 
     if (this.rejectForm.invalid) {
       this.error.set('Indique el motivo del rechazo (entre 10 y 200 caracteres)');
@@ -288,22 +307,26 @@ export class Returns {
   }
 
   searchSales(): void {
+    if(this.pending()||this.busy())return;
+    if(this.saleSearchControl.invalid){this.error.set('La búsqueda admite hasta 100 caracteres.');return;}
+    this.salesRequest?.unsubscribe();
     this.searchingSales.set(true);
     this.error.set('');
-    this.api.searchSales(this.saleSearchControl.value.trim()).pipe(
+    this.salesRequest=this.api.searchSales(this.saleSearchControl.value.trim()).pipe(
       takeUntilDestroyed(this.destroy),
       finalize(() => this.searchingSales.set(false))
     ).subscribe({
       next: list => this.foundSales.set(list),
-      error: err => this.error.set(authError(err))
+      error: err => {this.foundSales.set([]);this.error.set(authError(err));}
     });
   }
 
   selectSale(idVenta: number): void {
     if (this.pending() || this.busy()) return;
+    this.saleRequest?.unsubscribe();this.selectedSale.set(null);
     this.loading.set(true);
     this.error.set('');
-    this.api.getSaleDetail(idVenta).pipe(
+    this.saleRequest=this.api.getSaleDetail(idVenta).pipe(
       takeUntilDestroyed(this.destroy),
       finalize(() => this.loading.set(false))
     ).subscribe({
@@ -325,6 +348,7 @@ export class Returns {
 
   unselectSale(): void {
     if (this.pending() || this.busy()) return;
+    this.saleRequest?.unsubscribe();
     this.selectedSale.set(null);
     this.lineQuantities.set({});
     this.returnUnits.set({});
@@ -333,13 +357,15 @@ export class Returns {
 
   updateLineQuantity(idDetalleVenta: number, event: Event): void {
     if (this.pending() || this.busy()) return;
-    const val = parseFloat((event.target as HTMLInputElement).value) || 0;
+    const raw=(event.target as HTMLInputElement).value;
+    const val=raw===''?0:Number(raw);
     const sale = this.selectedSale();
     if (!sale) return;
 
     const item = sale.items.find(i => i.idDetalleVenta === idDetalleVenta);
     const max = item ? +item.disponibleDevolver : 0;
-    const cleanVal = Math.min(Math.max(0, val), max);
+    const cleanVal=val;
+    if(!Number.isFinite(val)||val<0||val>max)this.error.set('La cantidad debe estar entre cero y '+max+'.');
 
     this.lineQuantities.update(q => ({...q, [idDetalleVenta]: cleanVal}));
   }
@@ -365,7 +391,7 @@ export class Returns {
     if (this.busy()) return;
     if (this.pending()) { this.retry(); return; }
     const sale = this.selectedSale();
-    if (!sale) return;
+    if (!sale||!this.canDevolver()) return;
 
     if (this.newReturnForm.invalid) {
       this.error.set('Complete todos los campos obligatorios del formulario.');
@@ -377,7 +403,8 @@ export class Returns {
     const conditions = this.lineConditions();
 
     for (const it of sale.items) {
-      const q = quantities[it.idDetalleVenta] || 0;
+      const q = quantities[it.idDetalleVenta] ?? 0;
+      if(!Number.isFinite(q)||q<0){this.error.set('Revisa la cantidad de '+it.nombreProducto);return;}
       if (q > 0) {
         const estado = conditions[it.idDetalleVenta] || 'APTO';
         let unidades: NonNullable<ReturnItemRequest['unidades']> = [];
@@ -413,7 +440,8 @@ export class Returns {
     const autoAprobar = this.isAdmin() && !!this.newReturnForm.get('autoAprobar')?.value;
     const cash = this.todayCash();
 
-    if (autoAprobar && (!cash || cash.estadoCaja !== 'ABIERTA')) {
+    if(autoAprobar&&['YAPE','DEBITO'].includes(this.newReturnForm.controls.forma.value||'')&&!this.newReturnForm.controls.referencia.value?.trim()){this.error.set('Ingresa la referencia del reintegro.');return;}
+    if (autoAprobar && (this.cashLoading()||!cash || cash.estadoCaja !== 'ABIERTA')) {
       this.error.set('Abra la caja para autorizar el reintegro de inmediato.');
       return;
     }
@@ -468,7 +496,7 @@ export class Returns {
 
   retry(): void {
     const p=this.pending();
-    if (!p || this.busy()) return;
+    if (!p || this.busy()||!this.canDevolver()||(p.kind!=='new'&&!this.isAdmin())) return;
     this.busy.set(true); this.error.set('');
     const call = p.kind==='approve' ? this.api.aprobarDevolucion(p.id,p.body as ApproveRequest)
       : p.kind==='reject' ? this.api.rechazarDevolucion(p.id,p.body as RejectRequest)
@@ -477,12 +505,12 @@ export class Returns {
       next: res=>{
         this.pending.set(null); this.busy.set(false); this.enableForms();
         this.approveTarget.set(null); this.rejectTarget.set(null);
-        if (p.kind==='new') { this.unselectSale(); this.mode.set('list'); }
+        if (p.kind==='new') { this.unselectSale(); this.mode.set('list');if(this.route.snapshot.data['returnMode']==='new')void this.router.navigate(['/devoluciones']); }
         this.success.set('Devolución '+res.cabecera.codigo+': operación registrada correctamente.');
         this.fetchData();
       },
       error: e=>{
-        if ([400,401,403,404,409].includes(e.status)) { this.pending.set(null); this.enableForms(); }
+        if (e.status>=400&&e.status<500) { this.pending.set(null); this.enableForms(); }
         this.error.set(authError(e));
       }
     });
